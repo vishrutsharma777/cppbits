@@ -37,8 +37,9 @@ The first visit downloads about 27 MB (the compiler), plus 14 MB in the backgrou
 C++ compiles faster (about 1 s instead of 6 s). Both are cached in the browser (IndexedDB).
 Your solved problems and code are kept in that browser's `localStorage`.
 
-To put it online, publish the `site/` folder with any static host, for example GitHub Pages using
-a workflow that uploads `site/`. GitHub Pages on a private repository needs a paid plan.
+**Online:** <https://vishrutsharma777.github.io/cppbits/>. The workflow in
+`.github/workflows/pages.yml` publishes `site/` to GitHub Pages on every push to `main`
+(repository Settings → Pages → Source: GitHub Actions).
 
 ## How it works
 
