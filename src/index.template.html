@@ -1,0 +1,574 @@
+<title>CppBits</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/*__CMCSS__*/
+</style>
+<style>
+/* Layout: a test-bench workspace. Problem list on the left, the problem and its editor in the
+   middle column, results directly under the editor. One accent (signal blue), semantic pass/fail. */
+:root {
+  --bg: #f3f5f6; --panel: #ffffff; --ink: #16202a; --muted: #5a6875; --line: #d8dee3; --soft: #eaeef1;
+  --accent: #0d6a8a; --accent-ink: #ffffff; --accent-soft: #dcedf4;
+  --ok: #1d7748; --ok-soft: #e1f2e8; --bad: #b0281f; --bad-soft: #f9e4e2; --warn: #9a5800; --warn-soft: #f8ecd9;
+  --code-bg: #fbfcfc; --gutter: #f1f4f6; --cm-kw: #7a2ea0; --cm-type: #0d6a8a; --cm-num: #9a5800; --cm-str: #1d7748; --cm-com: #7c8893; --cm-def: #16202a; --cm-meta: #9b3b6b; --cm-sel: #cfe5ef;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", "Segoe UI", sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #10151a; --panel: #161d24; --ink: #e2e8ed; --muted: #94a2ae; --line: #29333d; --soft: #1d262e;
+  --accent: #52b4d9; --accent-ink: #061319; --accent-soft: #173543;
+  --ok: #4fc58c; --ok-soft: #14301f; --bad: #f2797b; --bad-soft: #3a1a1b; --warn: #e2aa52; --warn-soft: #362a14;
+  --code-bg: #12191f; --gutter: #151c22; --cm-kw: #d29cf0; --cm-type: #6cc6e6; --cm-num: #e2aa52; --cm-str: #7fd3a2; --cm-com: #7d8b97; --cm-def: #e2e8ed; --cm-meta: #ef93bd; --cm-sel: #23465a;
+  color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #10151a; --panel: #161d24; --ink: #e2e8ed; --muted: #94a2ae; --line: #29333d; --soft: #1d262e;
+  --accent: #52b4d9; --accent-ink: #061319; --accent-soft: #173543;
+  --ok: #4fc58c; --ok-soft: #14301f; --bad: #f2797b; --bad-soft: #3a1a1b; --warn: #e2aa52; --warn-soft: #362a14;
+  --code-bg: #12191f; --gutter: #151c22; --cm-kw: #d29cf0; --cm-type: #6cc6e6; --cm-num: #e2aa52; --cm-str: #7fd3a2; --cm-com: #7d8b97; --cm-def: #e2e8ed; --cm-meta: #ef93bd; --cm-sel: #23465a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--f-body); }
+a { color: var(--accent); }
+code, pre, kbd { font-family: var(--f-mono); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app { display: grid; grid-template-columns: 290px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: 100%; }
+header.top {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.brand h1 { margin: 0; font: 700 22px/1 var(--f-display); letter-spacing: 0.01em; }
+.brand h1 span { color: var(--accent); }
+.brand p { margin: 0; color: var(--muted); font-size: 13px; }
+.top-right { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.solved-count { font: 500 13px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.cc-status { display: flex; align-items: center; gap: 8px; font: 500 12.5px var(--f-mono); padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); white-space: nowrap; }
+.cc-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; }
+.cc-status.ready .dot { background: var(--ok); }
+.cc-status.error .dot { background: var(--bad); }
+.cc-bar { width: 80px; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.cc-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.btn.menu-btn { display: none; }
+
+nav.side { border-right: 1px solid var(--line); background: var(--panel); overflow-y: auto; padding: 10px 0 24px; padding-left: env(safe-area-inset-left, 0px); }
+.side .play-link { display: flex; align-items: center; gap: 8px; margin: 2px 12px 10px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: var(--r); color: var(--ink); text-decoration: none; font-weight: 500; font-size: 14px; }
+.side .play-link.active, .side .play-link:hover { border-color: var(--accent); background: var(--accent-soft); }
+.side details { margin: 0; }
+.side summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 8px 16px 6px; font: 600 12px var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.side summary::-webkit-details-marker { display: none; }
+.side summary::before { content: "▸"; font-size: 11px; transition: transform .15s; }
+.side details[open] summary::before { transform: rotate(90deg); }
+.side summary .sec-count { margin-left: auto; font-weight: 500; letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
+.side ol { list-style: none; margin: 0 0 6px; padding: 0; }
+.side li a { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 5px 16px 5px 22px; color: var(--ink); text-decoration: none; font-size: 14px; }
+.side li a:hover { background: var(--soft); }
+.side li a.active { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.side li a .st { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--line); }
+.side li a .st.solved { background: var(--ok); border-color: var(--ok); }
+.side li a .st.tried { border-color: var(--warn); background: var(--warn-soft); }
+.side li a .lang { font: 500 11px var(--f-mono); color: var(--muted); }
+.side .about { margin: 16px 16px 0; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.side .about p { margin: 0 0 8px; }
+
+main { overflow-y: auto; min-width: 0; }
+.wrap { max-width: 1060px; margin: 0 auto; padding-block: 22px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 16px; }
+.p-head { display: flex; flex-direction: column; gap: 4px; }
+.eyebrow { font: 600 12px var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.eyebrow .tag { padding: 1px 7px; border-radius: 4px; background: var(--soft); border: 1px solid var(--line); letter-spacing: 0.02em; }
+.eyebrow .tag.solved { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.p-head h2 { margin: 0; font: 600 30px/1.15 var(--f-display); text-wrap: balance; }
+.statement { max-width: 80ch; }
+.statement p { margin: 0 0 10px; }
+.statement ul, .statement ol { margin: 0 0 10px; padding-left: 22px; }
+.statement li { margin: 3px 0; }
+.statement code { font-size: 0.9em; background: var(--soft); padding: 1px 4px; border-radius: 3px; }
+.statement pre { margin: 6px 0 12px; padding: 10px 12px; background: var(--code-bg); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--r); font-size: 13.5px; line-height: 1.5; overflow-x: auto; }
+
+.editor-box { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); overflow: hidden; }
+.ed-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--soft); }
+.ed-bar .file { font: 500 13px var(--f-mono); color: var(--muted); margin-right: auto; }
+.btn { font: 500 14px var(--f-body); padding: 7px 14px; border-radius: var(--r); border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn:disabled { opacity: 0.55; cursor: progress; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+.btn kbd { font-size: 11px; opacity: 0.8; }
+.CodeMirror { height: auto; min-height: 260px; font: 14px/1.55 var(--f-mono); background: var(--code-bg); color: var(--ink); }
+.CodeMirror-scroll { min-height: 260px; max-height: 62vh; }
+.CodeMirror-gutters { background: var(--gutter); border-right: 1px solid var(--line); }
+.CodeMirror-linenumber { color: var(--muted); }
+.CodeMirror-cursor { border-left: 2px solid var(--accent); }
+.CodeMirror-selected, .CodeMirror-focused .CodeMirror-selected { background: var(--cm-sel); }
+.CodeMirror-activeline-background { background: var(--soft); }
+.CodeMirror-matchingbracket { color: var(--ok) !important; font-weight: 600; text-decoration: underline; }
+.cm-s-default .cm-keyword { color: var(--cm-kw); }
+.cm-s-default .cm-type, .cm-s-default .cm-variable-3 { color: var(--cm-type); }
+.cm-s-default .cm-number { color: var(--cm-num); }
+.cm-s-default .cm-string, .cm-s-default .cm-string-2 { color: var(--cm-str); }
+.cm-s-default .cm-comment { color: var(--cm-com); font-style: italic; }
+.cm-s-default .cm-def, .cm-s-default .cm-variable, .cm-s-default .cm-variable-2, .cm-s-default .cm-property { color: var(--cm-def); }
+.cm-s-default .cm-meta { color: var(--cm-meta); }
+.cm-s-default .cm-atom, .cm-s-default .cm-builtin { color: var(--cm-num); }
+.cm-s-default .cm-operator { color: var(--ink); }
+textarea.fallback-ed { width: 100%; min-height: 300px; border: 0; padding: 10px 12px; font: 14px/1.55 var(--f-mono); background: var(--code-bg); color: var(--ink); resize: vertical; }
+
+.confirm { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--warn); background: var(--warn-soft); border-radius: var(--r); font-size: 14px; }
+.hint { padding: 10px 12px; border-radius: var(--r); background: var(--accent-soft); font-size: 14px; }
+.hint b { font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; margin-right: 6px; }
+.solution pre { margin: 0; padding: 12px; background: var(--code-bg); border: 1px solid var(--line); border-radius: var(--r); font-size: 13.5px; overflow-x: auto; }
+
+.results { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); overflow: hidden; }
+.banner { display: flex; align-items: center; gap: 12px; padding: 12px 14px; font-weight: 600; }
+.banner .badge { font: 600 12px var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; }
+.banner.idle { color: var(--muted); font-weight: 500; }
+.banner.ok { background: var(--ok-soft); color: var(--ok); }
+.banner.ok .badge { background: var(--ok); color: var(--panel); }
+.banner.bad { background: var(--bad-soft); color: var(--bad); }
+.banner.bad .badge { background: var(--bad); color: var(--panel); }
+.banner.warn { background: var(--warn-soft); color: var(--warn); }
+.banner.warn .badge { background: var(--warn); color: var(--panel); }
+.banner.busy { color: var(--accent); }
+.banner .meta { margin-left: auto; font: 500 12.5px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.res-body { padding: 4px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+.res-body:empty { display: none; }
+.res-body h4 { margin: 8px 0 4px; font: 600 12px var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.res-body p { margin: 0; font-size: 14px; }
+.res-body pre { margin: 0; padding: 10px 12px; background: var(--code-bg); border: 1px solid var(--line); border-radius: var(--r); font-size: 13px; line-height: 1.5; overflow-x: auto; white-space: pre; max-height: 360px; overflow-y: auto; }
+.cmd { color: var(--muted); }
+.mm-wrap { overflow-x: auto; }
+table.mm { border-collapse: collapse; width: 100%; font: 13px/1.45 var(--f-mono); }
+table.mm th { text-align: left; font-weight: 600; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.mm td { padding: 6px 8px; border-bottom: 1px solid var(--soft); vertical-align: top; }
+table.mm td.got { color: var(--bad); }
+table.mm td.want { color: var(--ok); }
+.diff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.p-nav { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+
+.play-opts { display: flex; gap: 14px; flex-wrap: wrap; align-items: end; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.field select, .field textarea { font: 14px var(--f-mono); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 8px; }
+.field.check { flex-direction: row; align-items: center; gap: 6px; color: var(--ink); font-size: 14px; padding-bottom: 6px; }
+.stdin-box { width: 100%; }
+.stdin-box textarea { width: 100%; min-height: 64px; resize: vertical; }
+
+@media (max-width: 860px) {
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
+  .btn.menu-btn { display: inline-flex; }
+  nav.side { grid-row: 2; border-right: 0; border-bottom: 1px solid var(--line); max-height: 55vh; padding-left: 0; }
+  nav.side.closed { display: none; }
+  .brand p { display: none; }
+  .p-head h2 { font-size: 25px; }
+  .diff { grid-template-columns: minmax(0, 1fr); }
+  .CodeMirror-scroll { max-height: 55vh; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <button class="btn small menu-btn" id="menuBtn" aria-controls="side" aria-expanded="false">Problems</button>
+    <div class="brand">
+      <h1>Cpp<span>Bits</span></h1>
+      <p>C and C++ practice for audio and embedded work, with a real compiler in your browser</p>
+    </div>
+    <div class="top-right">
+      <span class="solved-count" id="solvedCount">0 / 0 solved</span>
+      <span class="cc-status" id="ccStatus" role="status"><span class="dot"></span><span id="ccText">Loading compiler</span><span class="cc-bar" id="ccBarWrap"><i id="ccBar"></i></span></span>
+    </div>
+  </header>
+
+  <nav class="side closed" id="side" aria-label="Problems">
+    <a class="play-link" href="#playground" id="playLink">▷ Playground: run any C or C++ program</a>
+    <div id="sections"></div>
+    <div class="about">
+      <p><b>How it works.</b> Clang 22 and LLD, compiled to WebAssembly, run on your machine. Your code is compiled with a hidden test program that checks it against a reference.</p>
+      <p>Undefined behaviour such as signed overflow, shifting by 32 or more, or an out-of-range float-to-int conversion stops the program with a runtime error, the same idea as <code>-fsanitize=undefined</code>.</p>
+      <p>The first visit downloads about 27 MB; later visits load from your browser's cache. Progress and your code are saved in this browser only.</p>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div class="wrap" id="view"></div>
+  </main>
+</div>
+
+<script type="application/json" id="data">/*__DATA__*/</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  const DATA = JSON.parse(document.getElementById('data').textContent);
+  const PROBS = DATA.problems;
+  const BY_ID = Object.fromEntries(PROBS.map(p => [p.id, p]));
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const RUN_LIMIT_MS = 5000;
+
+  // ---------------- saved state (this browser only) ----------------
+  const KEY = 'cppbits.v1';
+  let saved = { solved: {}, tried: {}, code: {}, last: null, play: null };
+  try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s) saved = Object.assign(saved, s); } catch (e) { /* storage blocked */ }
+  let saveTimer = null;
+  function save() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) { /* ignore */ } }, 300);
+  }
+
+  // ---------------- compiler worker ----------------
+  const cc = { ready: false, pch: false, failed: null, nextId: 1, pending: new Map() };
+  let worker = null;
+  function setStatus(text, cls, frac) {
+    $('ccText').textContent = text;
+    $('ccStatus').className = 'cc-status' + (cls ? ' ' + cls : '');
+    $('ccBarWrap').hidden = frac == null;
+    if (frac != null) $('ccBar').style.width = Math.round(frac * 100) + '%';
+  }
+  const mb = (n) => (n / 1e6).toFixed(1);
+  try {
+    worker = new Worker('cc/compiler-worker.js', { type: 'module' });
+    worker.onmessage = (ev) => {
+      const m = ev.data;
+      if (m.type === 'progress') {
+        if (!cc.ready) setStatus(m.total ? `Loading compiler ${mb(m.loaded)} / ${mb(m.total)} MB` : 'Loading compiler', '', m.total ? Math.min(1, m.loaded / m.total) : 0);
+      } else if (m.type === 'ready') {
+        cc.ready = true; setStatus('Clang 22 ready', 'ready', null); refreshButtons();
+      } else if (m.type === 'pch-ready') {
+        cc.pch = true; setStatus('Clang 22 ready · fast C++', 'ready', null);
+      } else if (m.type === 'pch-failed') {
+        setStatus('Clang 22 ready', 'ready', null);
+      } else if (m.type === 'fatal') {
+        cc.failed = m.message; setStatus('Compiler failed to load', 'error', null); refreshButtons(); renderIdleBanner();
+      } else if (m.type === 'compiled') {
+        const p = cc.pending.get(m.id); if (p) { cc.pending.delete(m.id); p(m); }
+      }
+    };
+    worker.onerror = (e) => { cc.failed = (e && e.message) || 'The compiler worker could not start.'; setStatus('Compiler failed to load', 'error', null); refreshButtons(); renderIdleBanner(); };
+  } catch (e) {
+    cc.failed = 'This browser cannot start module workers: ' + e.message;
+    setStatus('Compiler unavailable', 'error', null);
+  }
+  function compile(job) {
+    return new Promise((resolve) => {
+      const id = cc.nextId++;
+      cc.pending.set(id, resolve);
+      worker.postMessage({ type: 'compile', id, job, checkH: DATA.check_h });
+    });
+  }
+  function runProgram(wasm, stdin) {
+    return new Promise((resolve) => {
+      let w;
+      try { w = new Worker('cc/runner-worker.js', { type: 'module' }); }
+      catch (e) { resolve({ trap: 'Could not start the program: ' + e.message, stdout: '', stderr: '', exitCode: -1 }); return; }
+      const t = setTimeout(() => { w.terminate(); resolve({ timeout: true, stdout: '', stderr: '', exitCode: -1 }); }, RUN_LIMIT_MS);
+      w.onmessage = (ev) => { clearTimeout(t); w.terminate(); resolve(ev.data); };
+      w.onerror = (e) => { clearTimeout(t); w.terminate(); resolve({ trap: (e && e.message) || 'runner error', stdout: '', stderr: '', exitCode: -1 }); };
+      w.postMessage({ wasm, stdin }, [wasm.buffer]);
+    });
+  }
+
+  // ---------------- sidebar ----------------
+  function buildSidebar() {
+    const box = $('sections'); box.innerHTML = '';
+    for (const sec of DATA.sections) {
+      const list = PROBS.filter(p => p.section === sec);
+      const d = document.createElement('details');
+      d.open = true;
+      const solved = list.filter(p => saved.solved[p.id]).length;
+      d.innerHTML = `<summary>${esc(sec)}<span class="sec-count">${solved}/${list.length}</span></summary><ol>` +
+        list.map(p => `<li><a href="#${p.id}" data-id="${p.id}"><span class="st ${saved.solved[p.id] ? 'solved' : (saved.tried[p.id] ? 'tried' : '')}" aria-hidden="true"></span><span>${esc(p.title)}</span><span class="lang">${p.lang === 'c' ? 'C' : 'C++'}</span></a></li>`).join('') + '</ol>';
+      box.appendChild(d);
+    }
+    const n = PROBS.filter(p => saved.solved[p.id]).length;
+    $('solvedCount').textContent = `${n} / ${PROBS.length} solved`;
+    markActive();
+  }
+  function markActive() {
+    document.querySelectorAll('.side li a').forEach(a => a.classList.toggle('active', a.dataset.id === current));
+    $('playLink').classList.toggle('active', current === 'playground');
+  }
+  $('menuBtn').addEventListener('click', () => {
+    const s = $('side'); s.classList.toggle('closed');
+    $('menuBtn').setAttribute('aria-expanded', String(!s.classList.contains('closed')));
+  });
+  if (window.matchMedia('(min-width: 861px)').matches) $('side').classList.remove('closed');
+
+  // ---------------- editor ----------------
+  let editor = null, edFallback = null;
+  function makeEditor(host, text, lang, onChange) {
+    editor = null; edFallback = null;
+    if (window.CodeMirror) {
+      editor = CodeMirror(host, {
+        value: text, mode: lang === 'c' ? 'text/x-csrc' : 'text/x-c++src', lineNumbers: true, indentUnit: 4, tabSize: 4,
+        matchBrackets: true, autoCloseBrackets: true, styleActiveLine: true, viewportMargin: Infinity,
+        extraKeys: { 'Ctrl-Enter': () => primaryAction(), 'Cmd-Enter': () => primaryAction(), Tab: (cm) => cm.somethingSelected() ? cm.indentSelection('add') : cm.replaceSelection('    ', 'end') },
+      });
+      editor.on('change', () => onChange(editor.getValue()));
+    } else {
+      edFallback = document.createElement('textarea');
+      edFallback.className = 'fallback-ed'; edFallback.id = 'codeFallback'; edFallback.spellcheck = false; edFallback.value = text;
+      edFallback.addEventListener('input', () => onChange(edFallback.value));
+      edFallback.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); primaryAction(); } });
+      host.appendChild(edFallback);
+    }
+  }
+  const getCode = () => (editor ? editor.getValue() : edFallback ? edFallback.value : '');
+  function setCode(t) { if (editor) editor.setValue(t); else if (edFallback) edFallback.value = t; }
+
+  // Compiler Explorer link (shows the generated assembly; opens in a new tab)
+  function godboltUrl(code, lang) {
+    const state = { sessions: [{ id: 1, language: lang === 'c' ? 'c' : 'c++', source: code,
+      compilers: [{ id: lang === 'c' ? 'cclang_trunk' : 'clang_trunk', options: lang === 'c' ? '-std=c11 -O1' : '-std=c++20 -O1' }] }] };
+    const bytes = new TextEncoder().encode(JSON.stringify(state));
+    let bin = ''; for (const b of bytes) bin += String.fromCharCode(b);
+    return 'https://godbolt.org/clientstate/' + btoa(bin);
+  }
+
+  // ---------------- views ----------------
+  let current = null, primaryAction = () => {};
+  function refreshButtons() {
+    const b = $('runBtn'); if (!b) return;
+    if (cc.failed) { b.disabled = true; b.innerHTML = 'Compiler unavailable'; }
+    else if (!cc.ready) { b.disabled = true; b.innerHTML = 'Loading compiler…'; }
+    else if (!b.dataset.busy) { b.disabled = false; b.innerHTML = b.dataset.label + ' <kbd>Ctrl+Enter</kbd>'; }
+  }
+  function renderIdleBanner() {
+    const r = $('banner'); if (!r || r.dataset.used) return;
+    if (cc.failed) { r.className = 'banner bad'; r.innerHTML = `<span class="badge">Error</span><span>The compiler could not load: ${esc(cc.failed)}</span>`; }
+  }
+
+  function showProblem(id) {
+    const p = BY_ID[id]; if (!p) return showProblem(PROBS[0].id);
+    current = id; saved.last = id; save(); markActive();
+    const idx = PROBS.indexOf(p), prev = PROBS[idx - 1], next = PROBS[idx + 1];
+    const file = p.kind === 'func' ? (p.lang === 'c' ? 'solution.c' : 'solution.cpp') : (p.lang === 'c' ? 'main.c' : 'main.cpp');
+    const kindText = p.kind === 'func' ? 'Write the function' : 'Write the whole program';
+    $('view').innerHTML = `
+      <div class="p-head">
+        <div class="eyebrow"><span>${esc(p.section)}</span><span class="tag">${p.lang === 'c' ? 'C' : 'C++'}</span><span class="tag">${kindText}</span>${saved.solved[id] ? '<span class="tag solved">Solved</span>' : ''}<span>${idx + 1} / ${PROBS.length}</span></div>
+        <h2>${esc(p.title)}</h2>
+      </div>
+      <div class="statement">${p.statement}</div>
+      <div class="editor-box">
+        <div class="ed-bar">
+          <span class="file">${file}</span>
+          <button class="btn small" id="hintBtn">Hint</button>
+          <button class="btn small" id="solBtn">Solution</button>
+          <button class="btn small" id="resetBtn">Reset</button>
+          <a class="btn small" id="gbBtn" href="#" target="_blank" rel="noopener">Assembly ↗</a>
+          <button class="btn primary" id="runBtn" data-label="Submit">Submit</button>
+        </div>
+        <div id="edHost"></div>
+      </div>
+      <div id="extra"></div>
+      <section class="results" aria-live="polite">
+        <div class="banner idle" id="banner"><span>Write your code, then press Submit. The hidden test prints every mismatch it finds.</span></div>
+        <div class="res-body" id="resBody"></div>
+      </section>
+      <div class="p-nav">
+        ${prev ? `<a class="btn" href="#${prev.id}">← ${esc(prev.title)}</a>` : '<span></span>'}
+        ${next ? `<a class="btn" href="#${next.id}">${esc(next.title)} →</a>` : '<span></span>'}
+      </div>`;
+    makeEditor($('edHost'), saved.code[id] != null ? saved.code[id] : p.starter, p.lang, (t) => { saved.code[id] = t; save(); });
+    primaryAction = () => submit(p);
+    $('runBtn').addEventListener('click', () => submit(p));
+    $('resetBtn').addEventListener('click', () => askConfirm('Replace your code with the starter code?', 'Reset', () => { setCode(p.starter); delete saved.code[id]; save(); }));
+    $('hintBtn').addEventListener('click', () => { $('extra').innerHTML = `<div class="hint"><b>Hint</b>${esc(p.hint)}</div>`; });
+    $('solBtn').addEventListener('click', () => askConfirm('Show the reference solution? Try a little longer first if you can.', 'Show solution', () => {
+      $('extra').innerHTML = `<div class="solution"><pre>${esc(p.solution)}</pre></div>`;
+    }));
+    $('gbBtn').addEventListener('click', () => { $('gbBtn').href = godboltUrl(getCode(), p.lang); });
+    refreshButtons(); renderIdleBanner();
+    $('main').scrollTop = 0;
+    if (window.matchMedia('(max-width: 860px)').matches) { $('side').classList.add('closed'); $('menuBtn').setAttribute('aria-expanded', 'false'); }
+  }
+
+  function askConfirm(text, okLabel, onOk) {
+    const x = $('extra');
+    x.innerHTML = `<div class="confirm"><span>${esc(text)}</span><button class="btn small primary" id="cfOk">${esc(okLabel)}</button><button class="btn small" id="cfNo">Cancel</button></div>`;
+    $('cfOk').addEventListener('click', () => { x.innerHTML = ''; onOk(); });
+    $('cfNo').addEventListener('click', () => { x.innerHTML = ''; });
+  }
+
+  function setBanner(kind, badge, text, meta) {
+    const b = $('banner'); b.dataset.used = '1';
+    b.className = 'banner ' + kind;
+    b.innerHTML = `${badge ? `<span class="badge">${esc(badge)}</span>` : ''}<span>${text}</span>${meta ? `<span class="meta">${esc(meta)}</span>` : ''}`;
+  }
+  function busy(on, label) {
+    const b = $('runBtn'); if (!b) return;
+    if (on) { b.dataset.busy = '1'; b.disabled = true; b.textContent = label; }
+    else { delete b.dataset.busy; refreshButtons(); }
+  }
+  const cmdLine = (m) => '$ ' + m.args.map(a => (/\s/.test(a) ? `'${a}'` : a)).join(' ');
+  const TRAP_TEXT = 'The program stopped at a trap. Here that means undefined behaviour (signed overflow, a shift by the full width or more, an out-of-range float-to-int conversion, an array index the compiler can see is out of bounds), a failed <code>assert</code> or <code>abort()</code>, or a memory access outside the program\'s memory. Note: reading through a NULL pointer does <em>not</em> trap in WebAssembly.';
+
+  async function submit(p) {
+    if (!cc.ready || $('runBtn').dataset.busy) return;
+    const code = getCode(), body = $('resBody');
+    saved.tried[p.id] = true; save();
+    busy(true, 'Compiling…');
+    setBanner('busy', '', p.lang === 'cpp' && !cc.pch ? 'Compiling (C++ is faster once the precompiled headers finish loading)…' : 'Compiling…');
+    body.innerHTML = '';
+    const m = await compile({ lang: p.lang, kind: p.kind, code, test: p.test });
+    const log = m.log ? m.log.replace(/\n+$/, '') : '';
+    if (!m.ok) {
+      busy(false);
+      const mainHint = /redefinition of 'main'|duplicate symbol: main/.test(log) ? '<p>This problem asks for a function only. Delete your <code>main()</code>; the hidden test provides one.</p>' : '';
+      setBanner('bad', 'Compile error', 'The compiler reported errors.', `${(m.ms / 1000).toFixed(1)} s`);
+      body.innerHTML = `${mainHint}<h4>Compiler output</h4><pre>${esc(log)}</pre><h4>Command</h4><pre class="cmd">${esc(cmdLine(m))}</pre>`;
+      buildSidebar();
+      return;
+    }
+    busy(true, 'Running…');
+    setBanner('busy', '', 'Running the tests…');
+    const r = await runProgram(m.wasm, '');
+    busy(false);
+    const meta = `compile ${(m.ms / 1000).toFixed(1)} s${r.ms != null && !r.timeout ? ` · run ${r.ms.toFixed(0)} ms` : ''}`;
+    let html = '';
+    if (p.kind === 'stdout') {
+      const good = !r.timeout && !r.trap && sameOutput(r.stdout, p.expected);
+      if (good) { pass(p); setBanner('ok', 'Success', 'Your program printed exactly the right output.', meta); }
+      else if (r.timeout) setBanner('bad', 'Time limit', `The program ran longer than ${RUN_LIMIT_MS / 1000} s. Is there an infinite loop?`, meta);
+      else if (r.trap) setBanner('bad', 'Runtime error', 'The program stopped with a runtime error.', meta);
+      else setBanner('bad', 'Incorrect', 'The output does not match.', meta);
+      if (r.trap) html += `<p>${TRAP_TEXT}</p><pre>${esc(r.trap)}</pre>`;
+      if (!good) html += `<div class="diff"><div><h4>Expected</h4><pre>${esc(p.expected)}</pre></div><div><h4>Your output</h4><pre>${esc(r.stdout || '(nothing)')}</pre></div></div>`;
+    } else {
+      const res = parseResult(r.stdout || '');
+      if (r.timeout) setBanner('bad', 'Time limit', `The tests ran longer than ${RUN_LIMIT_MS / 1000} s. Is there an infinite loop, or an O(n²) loop on a large input?`, meta);
+      else if (r.trap) setBanner('bad', 'Runtime error', res.total ? `Stopped with a runtime error after ${res.total} check(s).` : 'Stopped with a runtime error.', meta);
+      else if (!res.done) setBanner('bad', 'No result', 'The test program ended before printing its result. Did your code call exit()?', meta);
+      else if (res.pass === res.total) { pass(p); setBanner('ok', 'Success', `All ${res.total} checks passed.`, meta); }
+      else setBanner('bad', 'Incorrect', `${res.pass} of ${res.total} checks passed.`, meta);
+      if (r.trap) html += `<p>${TRAP_TEXT}</p><pre>${esc(r.trap)}</pre>`;
+      if (res.mismatches.length) {
+        html += `<h4>Mismatches${res.total - res.pass > res.mismatches.length ? ` (first ${res.mismatches.length} of ${res.total - res.pass})` : ''}</h4><div class="mm-wrap"><table class="mm"><thead><tr><th>Check</th><th>Expected</th><th>Your result</th></tr></thead><tbody>` +
+          res.mismatches.map(l => { const [what, e, g] = l.split(' | '); return `<tr><td>${esc(what)}</td><td class="want">${esc((e || '').replace(/^expected /, ''))}</td><td class="got">${esc((g || '').replace(/^got /, ''))}</td></tr>`; }).join('') + '</tbody></table></div>';
+      }
+      if (res.other.trim()) html += `<h4>Your program printed</h4><pre>${esc(res.other)}</pre>`;
+    }
+    if (r.stderr) html += `<h4>stderr</h4><pre>${esc(r.stderr)}</pre>`;
+    if (log) html += `<h4>Compiler warnings</h4><pre>${esc(log)}</pre>`;
+    html += `<h4>Command</h4><pre class="cmd">${esc(cmdLine(m))}</pre>`;
+    body.innerHTML = html;
+    buildSidebar();
+  }
+  function pass(p) {
+    saved.solved[p.id] = true; save();
+    const tag = document.querySelector('.p-head .eyebrow');
+    if (tag && !tag.querySelector('.solved')) tag.insertAdjacentHTML('beforeend', '<span class="tag solved">Solved</span>');
+  }
+  function parseResult(stdout) {
+    const m = /@@RESULT (\d+) (\d+)/.exec(stdout);
+    const lines = stdout.split('\n');
+    const mismatches = lines.filter(l => l.startsWith('MISMATCH ')).map(l => l.slice(9));
+    const other = lines.filter(l => !l.startsWith('MISMATCH ') && !l.startsWith('@@RESULT ')).join('\n').replace(/\n+$/, '');
+    return m ? { done: true, pass: +m[1], total: +m[2], mismatches, other } : { done: false, pass: 0, total: 0, mismatches, other };
+  }
+  function sameOutput(got, want) {
+    const norm = s => s.replace(/\r\n/g, '\n').split('\n').map(l => l.replace(/\s+$/, '')).join('\n').replace(/\n+$/, '');
+    return norm(got) === norm(want);
+  }
+
+  // ---------------- playground ----------------
+  const PLAY_C = '#include <stdio.h>\n#include <stdint.h>\n\nint main(void)\n{\n    int16_t a = 30000, b = 10000;\n    int32_t sum = (int32_t)a + b;          /* 40000 does not fit in int16 */\n    printf("sum = %d, wrapped = %d\\n", sum, (int16_t)sum);\n    return 0;\n}\n';
+  const PLAY_CPP = '#include <iostream>\n#include <string>\n#include <vector>\n#include <numeric>\n#include <numbers>\n#include <cmath>\n\nint main()\n{\n    const double fs = 48000.0, f = 1000.0;\n    std::vector<float> x(480);\n    for (std::size_t n = 0; n < x.size(); n++)\n        x[n] = std::sin(2 * std::numbers::pi * f * n / fs);\n    double e = std::inner_product(x.begin(), x.end(), x.begin(), 0.0);\n    std::cout << "RMS of a 1 kHz sine: " << std::sqrt(e / x.size()) << "\\n";\n    std::string line;\n    if (std::getline(std::cin, line)) std::cout << "stdin said: " << line << "\\n";\n}\n';
+  function showPlayground() {
+    current = 'playground'; saved.last = 'playground'; save(); markActive();
+    const st = saved.play || { lang: 'cpp', code: { c: PLAY_C, cpp: PLAY_CPP }, std: '', opt: '', ub: true, stdin: 'hello from stdin' };
+    saved.play = st;
+    $('view').innerHTML = `
+      <div class="p-head"><div class="eyebrow"><span>Playground</span></div><h2>Run any C or C++ program</h2></div>
+      <div class="statement"><p>Write a complete program with <code>main()</code>, give it some input on stdin, and run it. Nothing is graded here.</p></div>
+      <div class="play-opts">
+        <label class="field">Language<select id="plLang"><option value="c">C</option><option value="cpp">C++</option></select></label>
+        <label class="field">Standard<select id="plStd"></select></label>
+        <label class="field">Optimisation<select id="plOpt"><option value="">-O1 (default)</option><option value="-O0">-O0</option><option value="-O2">-O2</option><option value="-O3">-O3</option><option value="-Os">-Os</option></select></label>
+        <label class="field check"><input type="checkbox" id="plUb"> Trap undefined behaviour</label>
+      </div>
+      <div class="editor-box">
+        <div class="ed-bar"><span class="file" id="plFile">main.cpp</span>
+          <button class="btn small" id="plReset">Example</button>
+          <a class="btn small" id="gbBtn" href="#" target="_blank" rel="noopener">Assembly ↗</a>
+          <button class="btn primary" id="runBtn" data-label="Run">Run</button></div>
+        <div id="edHost"></div>
+      </div>
+      <label class="field stdin-box">stdin<textarea id="plStdin" spellcheck="false"></textarea></label>
+      <div id="extra"></div>
+      <section class="results" aria-live="polite">
+        <div class="banner idle" id="banner"><span>Press Run to compile and run the program.</span></div>
+        <div class="res-body" id="resBody"></div>
+      </section>`;
+    const stdOpts = { c: [['', 'C11 (default)'], ['c17', 'C17'], ['c23', 'C23']], cpp: [['', 'C++20 (default)'], ['c++17', 'C++17'], ['c++23', 'C++23']] };
+    const fillStd = () => { $('plStd').innerHTML = stdOpts[st.lang].map(([v, t]) => `<option value="${v}">${t}</option>`).join(''); $('plStd').value = st.std || ''; };
+    const mount = () => { $('edHost').innerHTML = ''; $('plFile').textContent = st.lang === 'c' ? 'main.c' : 'main.cpp'; makeEditor($('edHost'), st.code[st.lang], st.lang, (t) => { st.code[st.lang] = t; save(); }); };
+    $('plLang').value = st.lang; fillStd(); $('plOpt').value = st.opt || ''; $('plUb').checked = st.ub !== false; $('plStdin').value = st.stdin || '';
+    mount();
+    $('plLang').addEventListener('change', () => { st.lang = $('plLang').value; st.std = ''; fillStd(); mount(); save(); });
+    $('plStd').addEventListener('change', () => { st.std = $('plStd').value; save(); });
+    $('plOpt').addEventListener('change', () => { st.opt = $('plOpt').value; save(); });
+    $('plUb').addEventListener('change', () => { st.ub = $('plUb').checked; save(); });
+    $('plStdin').addEventListener('input', () => { st.stdin = $('plStdin').value; save(); });
+    $('plReset').addEventListener('click', () => askConfirm('Replace the editor with the example program?', 'Replace', () => { st.code[st.lang] = st.lang === 'c' ? PLAY_C : PLAY_CPP; setCode(st.code[st.lang]); save(); }));
+    $('gbBtn').addEventListener('click', () => { $('gbBtn').href = godboltUrl(getCode(), st.lang); });
+    primaryAction = () => runPlay(st);
+    $('runBtn').addEventListener('click', () => runPlay(st));
+    refreshButtons(); renderIdleBanner();
+    $('main').scrollTop = 0;
+  }
+  async function runPlay(st) {
+    if (!cc.ready || $('runBtn').dataset.busy) return;
+    const body = $('resBody');
+    busy(true, 'Compiling…'); setBanner('busy', '', 'Compiling…'); body.innerHTML = '';
+    const m = await compile({ lang: st.lang, kind: 'play', code: getCode(), std: st.std || undefined, opt: st.opt || undefined, ub: st.ub !== false });
+    const log = m.log ? m.log.replace(/\n+$/, '') : '';
+    if (!m.ok) {
+      busy(false);
+      setBanner('bad', 'Compile error', 'The compiler reported errors.', `${(m.ms / 1000).toFixed(1)} s`);
+      body.innerHTML = `<h4>Compiler output</h4><pre>${esc(log)}</pre><h4>Command</h4><pre class="cmd">${esc(cmdLine(m))}</pre>`;
+      return;
+    }
+    busy(true, 'Running…'); setBanner('busy', '', 'Running…');
+    const r = await runProgram(m.wasm, st.stdin || '');
+    busy(false);
+    const meta = `compile ${(m.ms / 1000).toFixed(1)} s${r.ms != null && !r.timeout ? ` · run ${r.ms.toFixed(0)} ms` : ''}`;
+    if (r.timeout) setBanner('bad', 'Time limit', `Stopped after ${RUN_LIMIT_MS / 1000} s.`, meta);
+    else if (r.trap) setBanner('bad', 'Runtime error', 'The program stopped with a runtime error.', meta);
+    else setBanner(r.exitCode === 0 ? 'ok' : 'warn', `Exit ${r.exitCode}`, r.exitCode === 0 ? 'The program finished normally.' : 'The program returned a non-zero exit code.', meta);
+    let html = '';
+    if (r.trap) html += `<p>${TRAP_TEXT}</p><pre>${esc(r.trap)}</pre>`;
+    html += `<h4>stdout</h4><pre>${esc(r.stdout || '(nothing)')}</pre>`;
+    if (r.stderr) html += `<h4>stderr</h4><pre>${esc(r.stderr)}</pre>`;
+    if (r.truncated) html += '<p>Output was cut off after 200 kB.</p>';
+    if (log) html += `<h4>Compiler warnings</h4><pre>${esc(log)}</pre>`;
+    html += `<h4>Command</h4><pre class="cmd">${esc(cmdLine(m))}</pre>`;
+    body.innerHTML = html;
+  }
+
+  // ---------------- routing ----------------
+  function route() {
+    const h = (location.hash || '').slice(1);
+    if (h === 'playground') return showPlayground();
+    if (BY_ID[h]) return showProblem(h);
+    if (saved.last === 'playground') return showPlayground();
+    showProblem(BY_ID[saved.last] ? saved.last : PROBS[0].id);
+  }
+  window.addEventListener('hashchange', route);
+  buildSidebar();
+  route();
+})();
+</script>

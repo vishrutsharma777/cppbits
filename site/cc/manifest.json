@@ -1,0 +1,29 @@
+{
+ "files": {
+  "llvm.core.wasm": {
+   "parts": [
+    "llvm.core.wasm.gz0.wasm",
+    "llvm.core.wasm.gz1.wasm"
+   ],
+   "type": "application/wasm"
+  },
+  "llvm-resources.tar": {
+   "parts": [
+    "llvm-resources.tar.gz0.wasm"
+   ],
+   "type": "application/octet-stream"
+  },
+  "pre.hpp.pch": {
+   "parts": [
+    "pre.hpp.pch.gz0.wasm"
+   ],
+   "type": "application/octet-stream"
+  }
+ },
+ "sizes": {
+  "llvm.core.wasm.gz0.wasm": 14000000,
+  "llvm.core.wasm.gz1.wasm": 8637145,
+  "llvm-resources.tar.gz0.wasm": 4243123,
+  "pre.hpp.pch.gz0.wasm": 13660404
+ }
+}
