@@ -5,7 +5,7 @@ embedded work. Every problem gives you a function to write; a hidden test progra
 compares it with a reference solution, and lists every mismatch. The compiler is a real
 **Clang 22 / LLD**, compiled to WebAssembly, running in your browser, so no server is needed.
 
-89 problems in 9 sections:
+160 problems in 15 sections:
 
 | Section | Problems | Examples |
 |---|---|---|
@@ -18,6 +18,16 @@ compares it with a reference solution, and lists every mismatch. The compiler is
 | Real-time and buffers | 7 | interleave, int16/float, 24-bit unpack, lock-free ring buffer, gain ramps, resampling ratio |
 | C++ language | 19 | templates, RAII, move semantics, constexpr, virtual functions, span/optional/function, RBJ biquad class |
 | Algorithms | 10 | binary search, two-sum, Kadane, sieve, palindrome, matrix multiply |
+| OA: predict the output (C) | 29 | increments, signed/unsigned, `*p++`, `sizeof`, `static`, `const`, padding, macros, recursion in `main` |
+| OA: predict the output (C++) | 7 | constructor order, virtual calls, slicing, static members, overloads |
+| Embedded C | 10 | UART frames, I2C decoder, CRC-16, Hamming ECC, debounce, watchdog, ISR vector table, memory pool, Gray code |
+| OS and architecture in C | 9 | cache split and LRU cache simulator, page tables, FIFO/LRU/optimal paging, FCFS/SJF/RR, Banker's, first/best/worst fit |
+| Sorting | 6 | bubble, selection, insertion (with counts), stable merge sort, quicksort on sorted input, `qsort` comparator |
+| Interview classics | 10 | 1..n without loops, bits to flip, Floyd cycle, k-th from end, postfix, `strstr`, rotate, `INT_MIN` to string |
+
+The last six sections are placement-OA practice (built for the Qualcomm hardware-engineer OA: C output,
+OS, OOP, sorting, embedded). **Predict the output** questions show a program; you type what it prints and
+get an explanation. Checking needs no compiler, and **Run it** compiles the program to show the real output.
 
 There is also a **Playground** for running any C or C++ program, with stdin input and a choice
 of standard and optimisation level.
@@ -60,8 +70,10 @@ Your solved problems and code are kept in that browser's `localStorage`.
 
 ## Add or change problems
 
-Problems live in `src/problems_a.py`, `problems_b.py` and `problems_c.py` (statement, starter
-code, reference solution, hidden test, hint). Then:
+Problems live in `src/problems_a.py` … `problems_e.py` (statement, starter code, reference solution,
+hidden test, hint). Predict-the-output questions use `Q(...)` in `src/common.py`: the program, its
+expected output and an HTML explanation; the grader compiles and runs each program and checks the stored
+output. Then:
 
 ```
 python src/build_problems.py                                     # -> build/problems.json
@@ -69,7 +81,7 @@ node tools/grade.mjs <path>/gen/bundle.js                         # every soluti
 python tools/build_site.py vendor/codemirror-5.65.16.min.css      # -> site/index.html
 ```
 
-`tools/grade.mjs` uses the same compiler, flags and runtime as the site. Get the compiler with
+`tools/grade.mjs` (add `--pch` to use the C++ precompiled header like the browser) uses the same compiler, flags and runtime as the site. Get the compiler with
 `npm pack @yowasp/clang@22.0.0-git20542-10` and unpack it; `<path>/gen/bundle.js` is inside.
 `tools/make_pch.mjs` rebuilds the precompiled header and `tools/package.py <path>/gen` re-packs
 the compiler files into `site/cc/`.

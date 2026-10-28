@@ -2,9 +2,10 @@
 import json, os, sys
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, here)
-import problems_a, problems_b, problems_c
+import problems_a, problems_b, problems_c, problems_d, problems_e
 
-probs = problems_a.PROBLEMS + problems_b.PROBLEMS + problems_c.PROBLEMS
+probs = (problems_a.PROBLEMS + problems_b.PROBLEMS + problems_c.PROBLEMS
+         + problems_d.PROBLEMS + problems_e.PROBLEMS)
 ids = [p["id"] for p in probs]
 assert len(ids) == len(set(ids)), "duplicate ids"
 sections = []

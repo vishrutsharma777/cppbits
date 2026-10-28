@@ -158,6 +158,17 @@ table.mm td.want { color: var(--ok); }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .field select, .field textarea { font: 14px var(--f-mono); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 8px; }
 .field.check { flex-direction: row; align-items: center; gap: 6px; color: var(--ink); font-size: 14px; padding-bottom: 6px; }
+.answer { display: flex; flex-direction: column; gap: 6px; }
+.answer label { font: 600 12px var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.answer textarea { width: 100%; min-height: 92px; resize: vertical; padding: 10px 12px; font: 14px/1.55 var(--f-mono); color: var(--ink); background: var(--code-bg); border: 1px solid var(--line); border-radius: var(--r); }
+.answer-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.explain { font-size: 14px; max-width: 80ch; }
+.explain p { margin: 0 0 8px; }
+.explain ul, .explain ol { margin: 0 0 8px; padding-left: 22px; }
+.explain code { font-size: 0.92em; background: var(--soft); padding: 1px 4px; border-radius: 3px; }
+pre.ro-code { margin: 0; padding: 10px 12px; background: var(--code-bg); font-size: 14px; overflow-x: auto; }
+.side .track { margin: 0 12px 10px; padding: 8px 10px; border-radius: var(--r); background: var(--accent-soft); font-size: 12.5px; line-height: 1.45; }
+.side .track a { font-weight: 600; }
 .stdin-box { width: 100%; }
 .stdin-box textarea { width: 100%; min-height: 64px; resize: vertical; }
 
@@ -189,6 +200,7 @@ table.mm td.want { color: var(--ok); }
 
   <nav class="side closed" id="side" aria-label="Problems">
     <a class="play-link" href="#playground" id="playLink">▷ Playground: run any C or C++ program</a>
+    <div class="track"><b>Placement OA prep</b> (Qualcomm and similar): <a href="#pr_incr">predict-the-output</a> questions in C and C++, then embedded C, OS and architecture, sorting and interview classics, at the end of the list.</div>
     <div id="sections"></div>
     <div class="about">
       <p><b>How it works.</b> Clang 22 and LLD, compiled to WebAssembly, run on your machine. Your code is compiled with a hidden test program that checks it against a reference.</p>
@@ -343,7 +355,7 @@ table.mm td.want { color: var(--ok); }
     const b = $('runBtn'); if (!b) return;
     if (cc.failed) { b.disabled = true; b.innerHTML = 'Compiler unavailable'; }
     else if (!cc.ready) { b.disabled = true; b.innerHTML = 'Loading compiler…'; }
-    else if (!b.dataset.busy) { b.disabled = false; b.innerHTML = b.dataset.label + ' <kbd>Ctrl+Enter</kbd>'; }
+    else if (!b.dataset.busy) { b.disabled = false; b.innerHTML = b.dataset.label + (b.dataset.nokbd ? '' : ' <kbd>Ctrl+Enter</kbd>'); }
   }
   function renderIdleBanner() {
     const r = $('banner'); if (!r || r.dataset.used) return;
@@ -354,6 +366,7 @@ table.mm td.want { color: var(--ok); }
     const p = BY_ID[id]; if (!p) return showProblem(PROBS[0].id);
     current = id; saved.last = id; save(); markActive();
     const idx = PROBS.indexOf(p), prev = PROBS[idx - 1], next = PROBS[idx + 1];
+    if (p.kind === 'predict') return showPredict(p, idx, prev, next);
     const file = p.kind === 'func' ? (p.lang === 'c' ? 'solution.c' : 'solution.cpp') : (p.lang === 'c' ? 'main.c' : 'main.cpp');
     const kindText = p.kind === 'func' ? 'Write the function' : 'Write the whole program';
     $('view').innerHTML = `
@@ -394,6 +407,104 @@ table.mm td.want { color: var(--ok); }
     refreshButtons(); renderIdleBanner();
     $('main').scrollTop = 0;
     if (window.matchMedia('(max-width: 860px)').matches) { $('side').classList.add('closed'); $('menuBtn').setAttribute('aria-expanded', 'false'); }
+  }
+
+  // ---------------- predict-the-output questions ----------------
+  // The program is shown read-only; the reader types what it prints. Checking needs no compiler;
+  // "Run it" compiles the program and shows its real output.
+  const normAnswer = s => s.replace(/\r\n/g, '\n').split('\n').map(l => l.replace(/[ \t]+/g, ' ').trim()).join('\n').replace(/^\n+|\n+$/g, '');
+  function showPredict(p, idx, prev, next) {
+    const id = p.id;
+    $('view').innerHTML = `
+      <div class="p-head">
+        <div class="eyebrow"><span>${esc(p.section)}</span><span class="tag">${p.lang === 'c' ? 'C' : 'C++'}</span><span class="tag">Predict the output</span>${saved.solved[id] ? '<span class="tag solved">Solved</span>' : ''}<span>${idx + 1} / ${PROBS.length}</span></div>
+        <h2>${esc(p.title)}</h2>
+      </div>
+      <div class="statement">${p.statement}</div>
+      <div class="editor-box">
+        <div class="ed-bar">
+          <span class="file">${p.lang === 'c' ? 'main.c' : 'main.cpp'} · read only</span>
+          <button class="btn small" id="playBtn">Open in Playground</button>
+          <button class="btn small" id="runBtn" data-label="Run it" data-nokbd="1">Run it</button>
+        </div>
+        <div id="edHost"></div>
+      </div>
+      <div class="answer">
+        <label for="answer">Your answer: what does it print?</label>
+        <textarea id="answer" spellcheck="false" placeholder="Type the output here, one line per line"></textarea>
+        <div class="answer-bar">
+          <button class="btn primary" id="checkBtn">Check <kbd>Ctrl+Enter</kbd></button>
+          <button class="btn small" id="showBtn">Show the answer</button>
+        </div>
+      </div>
+      <div id="extra"></div>
+      <section class="results" aria-live="polite">
+        <div class="banner idle" id="banner"><span>Work it out by hand, as in the OA, then press Check.</span></div>
+        <div class="res-body" id="resBody"></div>
+      </section>
+      <div class="p-nav">
+        ${prev ? `<a class="btn" href="#${prev.id}">← ${esc(prev.title)}</a>` : '<span></span>'}
+        ${next ? `<a class="btn" href="#${next.id}">${esc(next.title)} →</a>` : '<span></span>'}
+      </div>`;
+    editor = null; edFallback = null;
+    if (window.CodeMirror) {
+      CodeMirror($('edHost'), { value: p.solution, mode: p.lang === 'c' ? 'text/x-csrc' : 'text/x-c++src', lineNumbers: true, readOnly: true, viewportMargin: Infinity, indentUnit: 4 });
+    } else {
+      $('edHost').innerHTML = `<pre class="ro-code">${esc(p.solution)}</pre>`;
+    }
+    const ans = $('answer');
+    ans.value = saved.code[id] != null ? saved.code[id] : '';
+    ans.addEventListener('input', () => { saved.code[id] = ans.value; save(); });
+    ans.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); checkPredict(p); } });
+    primaryAction = () => checkPredict(p);
+    $('checkBtn').addEventListener('click', () => checkPredict(p));
+    $('showBtn').addEventListener('click', () => askConfirm('Show the expected output and the explanation? Try once more if you can.', 'Show answer', () => {
+      setBanner('warn', 'Answer', 'The expected output and why.', '');
+      $('resBody').innerHTML = `<h4>Expected output</h4><pre>${esc(p.expected)}</pre><h4>Why</h4><div class="explain">${p.hint}</div>`;
+    }));
+    $('runBtn').addEventListener('click', () => runPredict(p));
+    $('playBtn').addEventListener('click', () => askConfirm('Copy this program into the Playground? It replaces the Playground\'s ' + (p.lang === 'c' ? 'C' : 'C++') + ' code.', 'Open', () => {
+      const st = saved.play || { lang: p.lang, code: { c: PLAY_C, cpp: PLAY_CPP }, std: '', opt: '', ub: true, stdin: '' };
+      st.lang = p.lang; st.code[p.lang] = p.solution; st.std = ''; saved.play = st; save();
+      location.hash = '#playground';
+    }));
+    refreshButtons(); renderIdleBanner();
+    $('main').scrollTop = 0;
+    if (window.matchMedia('(max-width: 860px)').matches) { $('side').classList.add('closed'); $('menuBtn').setAttribute('aria-expanded', 'false'); }
+  }
+  function checkPredict(p) {
+    const got = normAnswer($('answer').value), want = normAnswer(p.expected);
+    saved.tried[p.id] = true; save();
+    if (!got) { setBanner('warn', 'Empty', 'Type what the program prints first.', ''); $('resBody').innerHTML = ''; return; }
+    if (got === want) {
+      pass(p);
+      setBanner('ok', 'Correct', 'That is exactly what the program prints.', '');
+      $('resBody').innerHTML = `<h4>Why</h4><div class="explain">${p.hint}</div>`;
+    } else {
+      const g = got.split('\n'), w = want.split('\n');
+      let k = 0; while (k < g.length && k < w.length && g[k] === w[k]) k++;
+      const where = k < w.length && k < g.length ? `Line ${k + 1} is not right` : (g.length < w.length ? `The first ${g.length} line(s) are right, but the program prints ${w.length} lines` : `The program prints only ${w.length} line(s)`);
+      setBanner('bad', 'Not quite', `${where}. Try again, or press Show the answer.`, '');
+      $('resBody').innerHTML = '';
+    }
+    buildSidebar();
+  }
+  async function runPredict(p) {
+    if (!cc.ready || $('runBtn').dataset.busy) return;
+    const body = $('resBody');
+    busy(true, 'Compiling…'); setBanner('busy', '', 'Compiling…'); body.innerHTML = '';
+    const m = await compile({ lang: p.lang, kind: 'stdout', code: p.solution });
+    const log = m.log ? m.log.replace(/\n+$/, '') : '';
+    if (!m.ok) { busy(false); setBanner('bad', 'Compile error', 'The compiler reported errors.', ''); body.innerHTML = `<pre>${esc(log)}</pre>`; return; }
+    busy(true, 'Running…');
+    const r = await runProgram(m.wasm, '');
+    busy(false);
+    setBanner('warn', 'Real output', 'This is what the program printed when compiled and run here.', `compile ${(m.ms / 1000).toFixed(1)} s`);
+    let html = `<h4>stdout</h4><pre>${esc(r.stdout || '(nothing)')}</pre>`;
+    if (r.trap) html += `<p>${TRAP_TEXT}</p><pre>${esc(r.trap)}</pre>`;
+    if (log) html += `<h4>Compiler warnings</h4><pre>${esc(log)}</pre>`;
+    html += `<h4>Why</h4><div class="explain">${p.hint}</div><h4>Command</h4><pre class="cmd">${esc(cmdLine(m))}</pre>`;
+    body.innerHTML = html;
   }
 
   function askConfirm(text, okLabel, onOk) {
