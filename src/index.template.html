@@ -93,6 +93,14 @@ main { overflow-y: auto; min-width: 0; }
 .statement li { margin: 3px 0; }
 .statement code { font-size: 0.9em; background: var(--soft); padding: 1px 4px; border-radius: 3px; }
 .statement pre { margin: 6px 0 12px; padding: 10px 12px; background: var(--code-bg); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--r); font-size: 13.5px; line-height: 1.5; overflow-x: auto; }
+.statement h4 { margin: 18px 0 6px; font: 600 15px var(--f-body); }
+.statement table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 6px 0 12px; font-size: 14px; }
+.statement th, .statement td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; vertical-align: top; }
+.statement th { background: var(--soft); font-weight: 600; }
+.statement details { margin: 10px 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); }
+.statement summary { cursor: pointer; font-weight: 600; }
+.statement details[open] summary { margin-bottom: 8px; }
+.statement .note { padding: 8px 12px; border-radius: var(--r); background: var(--accent-soft); margin: 0 0 10px; }
 
 .editor-box { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); overflow: hidden; }
 .ed-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--soft); }

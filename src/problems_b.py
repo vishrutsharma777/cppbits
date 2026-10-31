@@ -7,15 +7,71 @@ add = PROBLEMS.append
 S = "Fixed point (Q15 / Q31)"
 
 add(P("float_to_q15", S, "Float to Q15", "c", "func",
-r"""<p><b>Q15</b> stores a number between &minus;1 and just under +1 in an <code>int16_t</code>:
-the integer value is the number times 32768. So 0.5 is 16384 and &minus;1.0 is &minus;32768.
-+1.0 does not fit; the largest value is 32767 (0.99997).</p>
-<p>Write <code>int16_t float_to_q15(float x)</code>: multiply by 32768, round to the nearest
-integer (halves away from zero, like <code>roundf</code>), and <b>saturate</b> to
-[&minus;32768, 32767]. Inputs are between &minus;2 and 2.</p>
-<pre>float_to_q15(0.5f)  -> 16384
-float_to_q15(1.0f)  -> 32767   (saturated)
-float_to_q15(-1.5f) -> -32768  (saturated)</pre>""",
+r"""<p><b>What to write.</b> A function <code>int16_t float_to_q15(float x)</code>. It turns a real
+number <code>x</code> into its <b>Q15</b> code: a 16-bit integer that stands for that number.</p>
+<p><b>Why it matters.</b> Many DSP chips and audio codecs have no floating-point hardware, or only a slow
+one. They store samples and filter coefficients as <em>fixed-point</em> integers instead. Q15 is the
+most common fixed-point format.</p>
+<h4>What Q15 means</h4>
+<p>A Q15 number is an ordinary <code>int16_t</code>. You read it as a fraction:
+real value = integer &divide; 32768 (32768 = 2<sup>15</sup>). So to go from a real number to Q15, you
+multiply by 32768.</p>
+<pre> bit:     15    14    13    12   ...    1      0
+        [ s ] [ . ] [ . ] [ . ]  ...  [ . ]  [ . ]
+ weight:  -1   1/2   1/4   1/8   ...  2^-14  2^-15
+          sign bit, then 15 fraction bits</pre>
+<table>
+<tr><th>Real value</th><th>Q15 integer</th><th>Note</th></tr>
+<tr><td>&minus;1.0</td><td>&minus;32768</td><td>the smallest value</td></tr>
+<tr><td>&minus;0.5</td><td>&minus;16384</td><td></td></tr>
+<tr><td>0.0</td><td>0</td><td></td></tr>
+<tr><td>0.000030517578125</td><td>1</td><td>one step (1/32768), the smallest possible change</td></tr>
+<tr><td>0.25</td><td>8192</td><td></td></tr>
+<tr><td>0.5</td><td>16384</td><td></td></tr>
+<tr><td>0.999969482421875</td><td>32767</td><td>the largest value</td></tr>
+</table>
+<p>+1.0 does not fit. It would need 32768, which is one more than the largest <code>int16_t</code>.</p>
+<h4>The rule, step by step</h4>
+<ol>
+<li>Multiply: v = x &times; 32768.</li>
+<li>Round v to the nearest whole number. When the fraction is exactly one half, move <b>away from
+zero</b>: 1.5 becomes 2 and &minus;1.5 becomes &minus;2. This is exactly what <code>roundf</code> from
+<code>&lt;math.h&gt;</code> does.</li>
+<li><b>Saturate</b>: if the result is above 32767, use 32767. If it is below &minus;32768, use
+&minus;32768. ("Saturate" means: stick at the nearest end of the range instead of wrapping round.)</li>
+<li>Return the result as an <code>int16_t</code>.</li>
+</ol>
+<h4>Examples</h4>
+<table>
+<tr><th>Call</th><th>x &times; 32768</th><th>After rounding</th><th>You return</th></tr>
+<tr><td><code>float_to_q15(0.5f)</code></td><td>16384</td><td>16384</td><td>16384</td></tr>
+<tr><td><code>float_to_q15(0.1f)</code></td><td>3276.8</td><td>3277</td><td>3277</td></tr>
+<tr><td><code>float_to_q15(-0.5f)</code></td><td>&minus;16384</td><td>&minus;16384</td><td>&minus;16384</td></tr>
+<tr><td><code>float_to_q15(3.0f / 65536)</code></td><td>1.5</td><td>2 (a half moves away from 0)</td><td>2</td></tr>
+<tr><td><code>float_to_q15(-1.0f / 65536)</code></td><td>&minus;0.5</td><td>&minus;1</td><td>&minus;1</td></tr>
+<tr><td><code>float_to_q15(1.0f)</code></td><td>32768</td><td>32768</td><td>32767 (saturated)</td></tr>
+<tr><td><code>float_to_q15(-1.5f)</code></td><td>&minus;49152</td><td>&minus;49152</td><td>&minus;32768 (saturated)</td></tr>
+</table>
+<h4>Inputs and limits</h4>
+<ul>
+<li><code>x</code> is between &minus;2 and 2. So some inputs are outside the Q15 range and must be
+saturated.</li>
+</ul>
+<h4>Things to watch out for</h4>
+<ul>
+<li>A plain cast such as <code>(int16_t)v</code> throws the fraction away (3276.8 becomes 3276). It
+does not round.</li>
+<li>Converting a float that is outside the range of the target integer type is <b>undefined
+behaviour</b> in C: the result can be anything. So compare with 32767 and &minus;32768 while the value
+is still a <code>float</code>, and cast only after that.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Write the three steps (multiply, round, saturate) in that order.</li>
+<li>At which step is the value still a <code>float</code>? Do the range checks there.</li>
+<li>Test your idea on 1.0: the multiply gives 32768. What must happen next?</li>
+</ol>
+</details>""",
 r"""#include <stdint.h>
 #include <math.h>
 
@@ -55,11 +111,48 @@ int main(void)
 "roundf(x * 32768.0f), then clamp to the int16 range before converting. Converting an out-of-range float to an integer is undefined behaviour."))
 
 add(P("q15_add_sat", S, "Saturating add", "c", "func",
-r"""<p>Adding two Q15 numbers can overflow: 0.75 + 0.75 = 1.5 does not fit. Wrapping round would
-turn a loud sample into a large negative one, which sounds like a click. Audio code
-<b>saturates</b> instead.</p>
-<p>Write <code>int16_t q15_add_sat(int16_t a, int16_t b)</code> that returns a + b clamped to
-[&minus;32768, 32767].</p>""",
+r"""<p><b>What to write.</b> A function <code>int16_t q15_add_sat(int16_t a, int16_t b)</code>. It
+returns a + b, but if the sum does not fit in an <code>int16_t</code>, it returns the nearest value that
+does fit: 32767 for a sum that is too big, &minus;32768 for a sum that is too small. This is called a
+<b>saturating</b> add.</p>
+<p><b>Why it matters.</b> Two Q15 samples can add up to more than the format can hold:
+0.75 + 0.75 = 1.5 does not fit. Normal integer arithmetic <em>wraps round</em>, so a loud positive sample
+turns into a large negative one. In audio you hear that as a sharp click. Audio code saturates instead:
+the sample sticks at full scale, which sounds much softer.</p>
+<h4>Picture: wrap versus saturate</h4>
+<pre> -32768                    0                    32767
+   |-----------------------|-----------------------|
+   ^                                               |
+   +---------- wrap: 32767 + 1 lands here &lt;--------+
+
+ wrap:      32767 + 1  --&gt;  -32768   (top jumps to the bottom)
+ saturate:  32767 + 1  --&gt;   32767   (stays at the top)</pre>
+<h4>Examples</h4>
+<table>
+<tr><th>a</th><th>b</th><th>True sum</th><th>If you wrap</th><th>You return</th></tr>
+<tr><td>24576 (0.75)</td><td>24576 (0.75)</td><td>49152</td><td>&minus;16384 (&minus;0.5!)</td><td>32767</td></tr>
+<tr><td>32767</td><td>1</td><td>32768</td><td>&minus;32768</td><td>32767</td></tr>
+<tr><td>&minus;32768</td><td>&minus;1</td><td>&minus;32769</td><td>32767</td><td>&minus;32768</td></tr>
+<tr><td>100</td><td>&minus;200</td><td>&minus;100</td><td>&minus;100</td><td>&minus;100</td></tr>
+<tr><td>&minus;32768</td><td>32767</td><td>&minus;1</td><td>&minus;1</td><td>&minus;1</td></tr>
+</table>
+<h4>Facts you need</h4>
+<ul>
+<li>The <code>int16_t</code> range is &minus;32768 to 32767.</li>
+<li>In C, when you write <code>a + b</code> with two <code>int16_t</code> values, both are first widened
+to <code>int</code> (32 bits on this site). This is called <em>integer promotion</em>. So the sum
+itself is computed correctly. The damage happens only when you store it back into an
+<code>int16_t</code>.</li>
+<li>The true sum is always between &minus;65536 and 65534, so it fits easily in an
+<code>int32_t</code>.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Where can you keep the full sum so that nothing is lost?</li>
+<li>Which two comparisons decide whether you must clamp it?</li>
+<li>Only after those checks, convert the result to <code>int16_t</code>.</li>
+</ol>
+</details>""",
 r"""#include <stdint.h>
 
 int16_t q15_add_sat(int16_t a, int16_t b)
@@ -92,15 +185,59 @@ int main(void)
 "Add in int32_t, where the sum always fits, then clamp."))
 
 add(P("q15_mul", S, "Q15 multiply", "c", "func",
-r"""<p>Multiplying two Q15 numbers gives a Q30 result in 32 bits. To get back to Q15:</p>
-<ol><li>multiply as <code>int32_t</code>;</li>
-<li>add 2<sup>14</sup> (= 16384) to round;</li>
-<li>shift right by 15;</li>
-<li>saturate to the int16 range.</li></ol>
-<p>Write <code>int16_t q15_mul(int16_t a, int16_t b)</code>.
-Only one input pair actually overflows: (&minus;1) &times; (&minus;1) = +1.</p>
-<pre>q15_mul(16384, 16384)   -> 8192    (0.5 * 0.5 = 0.25)
-q15_mul(-32768, -32768) -> 32767   (saturated)</pre>""",
+r"""<p><b>What to write.</b> A function <code>int16_t q15_mul(int16_t a, int16_t b)</code>. Both inputs
+are Q15 numbers (real value = integer &divide; 32768). Return their product, also as a Q15 number.</p>
+<p><b>Why it matters.</b> Every gain, filter tap and mixer on a fixed-point DSP is a multiply like this
+one. Interviewers often ask you to write it and explain the shift and the rounding.</p>
+<h4>The idea</h4>
+<p>a stands for a/32768 and b stands for b/32768. Their real product is (a&middot;b)/32768<sup>2</sup>.
+To write that as Q15 again, you need (a&middot;b)/32768. So: multiply the two integers, then divide by
+32768 once. Dividing by 32768 = 2<sup>15</sup> is a right shift by 15. The integer product a&middot;b has
+30 fraction bits, so it is called a <b>Q30</b> number.</p>
+<pre> a (16 bits) x b (16 bits) = p (32 bits, a Q30 number)
+
+ p:  bit 31 ................ bit 15 | bit 14 ............ bit 0
+     these bits become the 16-bit  | these bits are thrown away
+     Q15 answer                    | by the shift &gt;&gt; 15</pre>
+<h4>The rule, step by step</h4>
+<ol>
+<li>Multiply as <code>int32_t</code>: p = a &times; b.</li>
+<li>Add 2<sup>14</sup> = 16384. That is half of 2<sup>15</sup>, so the next step rounds to the nearest
+value instead of cutting the fraction off.</li>
+<li>Shift right by 15.</li>
+<li>Saturate to the <code>int16_t</code> range [&minus;32768, 32767].</li>
+</ol>
+<h4>Facts you need</h4>
+<ul>
+<li>The product of two <code>int16_t</code> values always fits in an <code>int32_t</code> (its size is at
+most 2<sup>30</sup>).</li>
+<li>On this site, as on almost every compiler, <code>&gt;&gt;</code> on a negative <code>int</code>
+copies the sign bit. That is the same as dividing by 2<sup>15</sup> and rounding <b>down</b> (towards
+minus infinity). Together with the +16384, an exact half therefore always rounds <b>up</b>:
+1.5 &rarr; 2, &minus;1.5 &rarr; &minus;1, &minus;0.5 &rarr; 0. The test expects exactly this.</li>
+<li>Only one input pair overflows: (&minus;1) &times; (&minus;1) = +1.0, which would be 32768. It must
+become 32767. The smallest possible result is &minus;32767, so the lower end never overflows.</li>
+</ul>
+<h4>Examples</h4>
+<table>
+<tr><th>a</th><th>b</th><th>Real product</th><th>a&middot;b / 32768 (exact)</th><th>You return</th></tr>
+<tr><td>16384</td><td>16384</td><td>0.5 &times; 0.5 = 0.25</td><td>8192</td><td>8192</td></tr>
+<tr><td>24576</td><td>16384</td><td>0.75 &times; 0.5 = 0.375</td><td>12288</td><td>12288</td></tr>
+<tr><td>16384</td><td>&minus;8192</td><td>0.5 &times; &minus;0.25 = &minus;0.125</td><td>&minus;4096</td><td>&minus;4096</td></tr>
+<tr><td>3</td><td>16384</td><td>tiny</td><td>1.5</td><td>2</td></tr>
+<tr><td>&minus;3</td><td>16384</td><td>tiny</td><td>&minus;1.5</td><td>&minus;1</td></tr>
+<tr><td>&minus;1</td><td>16384</td><td>tiny</td><td>&minus;0.5</td><td>0</td></tr>
+<tr><td>32767</td><td>32767</td><td>about 0.99994</td><td>32766.00003</td><td>32766</td></tr>
+<tr><td>&minus;32768</td><td>32767</td><td>about &minus;0.99997</td><td>&minus;32767</td><td>&minus;32767</td></tr>
+<tr><td>&minus;32768</td><td>&minus;32768</td><td>&minus;1 &times; &minus;1 = +1</td><td>32768</td><td>32767 (saturated)</td></tr>
+</table>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>In which type must the multiply happen so that nothing overflows?</li>
+<li>Why does adding half of the divisor before a shift turn "cut off" into "round"?</li>
+<li>Which single result can be too big, and what do you return then?</li>
+</ol>
+</details>""",
 r"""#include <stdint.h>
 
 int16_t q15_mul(int16_t a, int16_t b)
@@ -132,9 +269,54 @@ int main(void)
 "((int32_t)a * b + (1 << 14)) >> 15, then saturate. The product of two int16 values always fits in int32."))
 
 add(P("q31_mul", S, "Q31 multiply", "c", "func",
-r"""<p>Q31 is the same idea in 32 bits: the integer is the value times 2<sup>31</sup>. Write
-<code>int32_t q31_mul(int32_t a, int32_t b)</code>: multiply in <code>int64_t</code>, add
-2<sup>30</sup>, shift right by 31, saturate to the int32 range.</p>""",
+r"""<p><b>What to write.</b> A function <code>int32_t q31_mul(int32_t a, int32_t b)</code> that
+multiplies two <b>Q31</b> numbers and returns a Q31 result.</p>
+<p><b>Why it matters.</b> Q31 is the same idea as Q15, but in 32 bits. Its steps are 65536 times finer
+than Q15 steps, so it is used where 16 bits are not precise enough, for example in filter coefficients and
+in high-quality audio paths.</p>
+<h4>What Q31 means</h4>
+<p>A Q31 number is an <code>int32_t</code>. Real value = integer &divide; 2<sup>31</sup>
+(2<sup>31</sup> = 2147483648).</p>
+<table>
+<tr><th>Real value</th><th>Q31 integer</th></tr>
+<tr><td>&minus;1.0</td><td>&minus;2147483648 (<code>INT32_MIN</code>), the smallest value</td></tr>
+<tr><td>&minus;0.25</td><td>&minus;536870912 = &minus;2<sup>29</sup></td></tr>
+<tr><td>0.25</td><td>536870912 = 2<sup>29</sup></td></tr>
+<tr><td>0.5</td><td>1073741824 = 2<sup>30</sup></td></tr>
+<tr><td>0.9999999995</td><td>2147483647 (<code>INT32_MAX</code>), the largest value</td></tr>
+</table>
+<h4>The rule, step by step (same recipe as Q15, one size bigger)</h4>
+<ol>
+<li>Multiply in <code>int64_t</code>: p = a &times; b. This product has 62 fraction bits (a Q62 number)
+and needs up to 63 bits, so 32 bits are not enough.</li>
+<li>Add 2<sup>30</sup> (half of 2<sup>31</sup>) so that the shift rounds.</li>
+<li>Shift right by 31.</li>
+<li>Saturate to the <code>int32_t</code> range: above 2147483647 becomes 2147483647.</li>
+</ol>
+<h4>Examples</h4>
+<table>
+<tr><th>a</th><th>b</th><th>Real product</th><th>You return</th></tr>
+<tr><td>2<sup>30</sup> (0.5)</td><td>2<sup>30</sup> (0.5)</td><td>0.25</td><td>536870912</td></tr>
+<tr><td>2<sup>30</sup> (0.5)</td><td>&minus;2<sup>29</sup> (&minus;0.25)</td><td>&minus;0.125</td><td>&minus;268435456</td></tr>
+<tr><td>&minus;1</td><td>1</td><td>about &minus;2&times;10<sup>&minus;19</sup></td><td>0 (rounds to zero)</td></tr>
+<tr><td><code>INT32_MAX</code></td><td><code>INT32_MAX</code></td><td>just under 1</td><td>2147483646</td></tr>
+<tr><td><code>INT32_MIN</code></td><td><code>INT32_MAX</code></td><td>just above &minus;1</td><td>&minus;2147483647</td></tr>
+<tr><td><code>INT32_MIN</code></td><td><code>INT32_MIN</code></td><td>&minus;1 &times; &minus;1 = +1</td><td>2147483647 (saturated)</td></tr>
+</table>
+<h4>Things to watch out for</h4>
+<ul>
+<li>Convert <b>before</b> multiplying: <code>(int64_t)a * b</code>. If you write <code>a * b</code>, the
+multiply happens in 32 bits and overflows, which is undefined behaviour in C.</li>
+<li>Like in Q15, <code>&gt;&gt;</code> on a negative number rounds down, so an exact half rounds up.</li>
+<li><code>INT32_MAX</code> and <code>INT32_MIN</code> come from <code>&lt;stdint.h&gt;</code>.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Take your Q15 multiply and replace every size: 16 &rarr; 32 bits, 32 &rarr; 64 bits, shift 15
+&rarr; 31, rounding constant 2<sup>14</sup> &rarr; 2<sup>30</sup>.</li>
+<li>Which one input pair gives a result that is too big?</li>
+</ol>
+</details>""",
 r"""#include <stdint.h>
 
 int32_t q31_mul(int32_t a, int32_t b)
@@ -166,13 +348,63 @@ int main(void)
 "Same recipe as Q15, one size up: int64_t product, + (1LL << 30), >> 31, saturate."))
 
 add(P("q15_dot", S, "Q15 dot product", "c", "func",
-r"""<p>FIR filters are dot products. Write
-<code>int16_t q15_dot(const int16_t *a, const int16_t *b, int n)</code>:</p>
-<ol><li>add up all products a[i]&middot;b[i] in an <code>int64_t</code> accumulator (Q30);</li>
-<li>at the end only, round and convert to Q15: add 2<sup>14</sup>, shift right by 15;</li>
-<li>saturate to the int16 range.</li></ol>
-<p>Rounding once at the end (not after every product) is how DSP chips with wide
-accumulators keep precision. <code>n</code> is 0 to 64.</p>""",
+r"""<p><b>What to write.</b> A function
+<code>int16_t q15_dot(const int16_t *a, const int16_t *b, int n)</code>. It returns the dot product
+a[0]&middot;b[0] + a[1]&middot;b[1] + &hellip; + a[n&minus;1]&middot;b[n&minus;1] of two Q15 arrays, as a
+Q15 number.</p>
+<p><b>Why it matters.</b> The output of an FIR filter is a dot product of the filter taps and the most
+recent samples. DSP chips have a <b>multiply-accumulate</b> (MAC) instruction and a wide accumulator
+register made for exactly this loop.</p>
+<h4>Picture</h4>
+<pre> a:  [a0]  [a1]  [a2]  ...  [a(n-1)]
+      *     *     *            *
+ b:  [b0]  [b1]  [b2]  ...  [b(n-1)]
+      |     |     |            |
+      +-----+-----+--- ... ----+--&gt; acc   (int64_t, a Q30 sum)
+                                     |
+                       (acc + 2^14) &gt;&gt; 15     round ONCE, at the end
+                                     |
+                       saturate to [-32768, 32767] --&gt; result</pre>
+<h4>The rule, step by step</h4>
+<ol>
+<li>Start an <code>int64_t</code> accumulator at 0.</li>
+<li>Add every product a[i]&middot;b[i] to it. Each product is a Q30 number. Do not round yet.</li>
+<li>After the loop, convert to Q15 once: add 2<sup>14</sup> (= 16384), then shift right by 15.</li>
+<li>Saturate to [&minus;32768, 32767].</li>
+</ol>
+<h4>Why 64 bits, and why round only once</h4>
+<ul>
+<li>One product can be as big as 2<sup>30</sup>, and an <code>int32_t</code> only goes up to about
+2<sup>31</sup>. So two or three big products can already overflow 32 bits. With n up to 64, the sum can
+reach 2<sup>36</sup>, which needs a 64-bit accumulator.</li>
+<li>Rounding every product loses a little each time, and the losses add up. Example: a = {1, 1, 1},
+b = {16384, 16384, 16384}. Each product is exactly half a Q15 step. Rounding each one gives
+1 + 1 + 1 = <b>3</b>. The exact sum is 1.5 steps, and rounding once gives <b>2</b>. The test expects
+2.</li>
+</ul>
+<h4>Examples</h4>
+<table>
+<tr><th>a</th><th>b</th><th>Accumulator (Q30)</th><th>You return</th></tr>
+<tr><td>{16384, 16384, &minus;8192}</td><td>{16384, 8192, 16384}</td><td>268435456</td><td>8192 (0.25)</td></tr>
+<tr><td>{1, 1, 1}</td><td>{16384, 16384, 16384}</td><td>49152</td><td>2</td></tr>
+<tr><td>{32767, 32767}</td><td>{32767, 32767}</td><td>2147352578</td><td>32767 (saturated; the real sum is about 2.0)</td></tr>
+<tr><td>{} (n = 0)</td><td>{}</td><td>0</td><td>0</td></tr>
+</table>
+<p>First row in real numbers: 0.5&middot;0.5 + 0.5&middot;0.25 + (&minus;0.25)&middot;0.5 =
+0.25 + 0.125 &minus; 0.125 = 0.25.</p>
+<h4>Inputs and limits</h4>
+<ul>
+<li><code>n</code> is 0 to 64. The values can be anywhere in the <code>int16_t</code> range.</li>
+<li>Rounding works as in <code>q15_mul</code>: <code>&gt;&gt;</code> on a negative number rounds down,
+so an exact half rounds up.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Inside the loop, only multiply and add. What type must the product have before you add it?</li>
+<li>After the loop, use the same "add half, shift, clamp" steps as in <code>q15_mul</code>, but with
+both an upper and a lower clamp (a sum can be very negative).</li>
+</ol>
+</details>""",
 r"""#include <stdint.h>
 
 int16_t q15_dot(const int16_t *a, const int16_t *b, int n)
@@ -221,10 +453,47 @@ int main(void)
 "One int64_t accumulator, one rounding step after the loop, then saturate."))
 
 add(P("apply_gain_q15", S, "Apply a Q15 gain", "c", "func",
-r"""<p>Write <code>void apply_gain_q15(int16_t *x, int n, int16_t gain)</code> that multiplies
-every sample in place by a Q15 gain, rounding and saturating like <code>q15_mul</code>:
-x[i] = sat16((x[i]&middot;gain + 2<sup>14</sup>) &gt;&gt; 15).</p>
-<p>A gain of 16384 halves the volume (&minus;6 dB); &minus;32768 inverts the polarity.</p>""",
+r"""<p><b>What to write.</b> A function
+<code>void apply_gain_q15(int16_t *x, int n, int16_t gain)</code>. It multiplies every one of the
+<code>n</code> samples in <code>x</code> by a Q15 <code>gain</code> and writes the result back into the
+same array ("in place").</p>
+<p><b>Why it matters.</b> This is a volume control on a fixed-point audio chip.</p>
+<h4>The rule</h4>
+<p>For every i from 0 to n&minus;1, do exactly what <code>q15_mul</code> does:</p>
+<pre>x[i] = saturate( (x[i] * gain + 2^14) &gt;&gt; 15 )
+
+saturate(v) = 32767 if v &gt; 32767, -32768 if v &lt; -32768, otherwise v</pre>
+<h4>What different gains mean</h4>
+<p>The gain is a Q15 number (real value = gain &divide; 32768). In decibels, gain in dB =
+20&middot;log<sub>10</sub>(|gain| / 32768).</p>
+<table>
+<tr><th>gain</th><th>Real value</th><th>Effect</th></tr>
+<tr><td>32767</td><td>0.99997</td><td>almost unchanged (about 0 dB)</td></tr>
+<tr><td>23170</td><td>0.7071</td><td>&minus;3 dB: half the power</td></tr>
+<tr><td>16384</td><td>0.5</td><td>&minus;6 dB: half the amplitude</td></tr>
+<tr><td>0</td><td>0</td><td>silence</td></tr>
+<tr><td>&minus;16384</td><td>&minus;0.5</td><td>half the amplitude and the polarity inverted</td></tr>
+<tr><td>&minus;32768</td><td>&minus;1.0</td><td>polarity inverted: every sample changes sign</td></tr>
+</table>
+<h4>Examples (x = {1000, &minus;1000, 32767, &minus;32768})</h4>
+<table>
+<tr><th>gain</th><th>x after the call</th></tr>
+<tr><td>16384</td><td>{500, &minus;500, 16384, &minus;16384}</td></tr>
+<tr><td>23170</td><td>{707, &minus;707, 23169, &minus;23170}</td></tr>
+<tr><td>&minus;32768</td><td>{&minus;1000, 1000, &minus;32767, 32767}</td></tr>
+</table>
+<p>Look at the last value of the last row: &minus;32768 &times; &minus;1.0 = +32768, which does not fit,
+so it saturates to 32767.</p>
+<pre> before:  x = [ 1000 | -1000 | 32767 | -32768 ]    gain = 16384 (0.5)
+ after:   x = [  500 |  -500 | 16384 | -16384 ]    same array, overwritten</pre>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>You already wrote the multiply for one pair of values in <code>q15_mul</code>. What changes when
+you do it for a whole array?</li>
+<li>Remember that the gain can be negative, so a result can be too big at either end. Clamp at both
+ends.</li>
+</ol>
+</details>""",
 r"""#include <stdint.h>
 
 void apply_gain_q15(int16_t *x, int n, int16_t gain)
@@ -273,10 +542,56 @@ int main(void)
 S = "DSP in C"
 
 add(P("db_lin", S, "Decibels", "c", "func",
-r"""<p>Audio levels are given in decibels. For amplitudes, linear = 10<sup>dB/20</sup> and
-dB = 20&middot;log<sub>10</sub>(linear). Write both:</p>
-<pre>float db_to_lin(float db);   // db_to_lin(-6.0206f) is about 0.5
-float lin_to_db(float x);    // x > 0;  lin_to_db(0.1f) is about -20</pre>""",
+r"""<p><b>What to write.</b> Two functions that convert between decibels (dB) and plain
+("linear") amplitude:</p>
+<pre>float db_to_lin(float db);   // decibels -&gt; linear amplitude
+float lin_to_db(float x);    // linear amplitude -&gt; decibels (x &gt; 0)</pre>
+<p><b>Why it matters.</b> Volume knobs, meters and gain settings in audio are given in dB, but the code
+multiplies samples by a linear number. You convert between the two all the time.</p>
+<h4>The formulas (for amplitudes, such as sample values or voltages)</h4>
+<pre>linear = 10^(dB / 20)
+dB     = 20 * log10(linear)</pre>
+<table>
+<tr><th>dB</th><th>linear</th><th>Meaning</th></tr>
+<tr><td>+20</td><td>10</td><td>ten times louder in amplitude</td></tr>
+<tr><td>+6</td><td>1.995 (about 2)</td><td>about double</td></tr>
+<tr><td>0</td><td>1</td><td>unchanged</td></tr>
+<tr><td>&minus;3.0103</td><td>0.7071</td><td>half the power</td></tr>
+<tr><td>&minus;6.0206</td><td>0.5</td><td>half the amplitude</td></tr>
+<tr><td>&minus;20</td><td>0.1</td><td>one tenth</td></tr>
+<tr><td>&minus;60</td><td>0.001</td><td>one thousandth</td></tr>
+</table>
+<p>Rule of thumb: every &minus;20 dB divides by 10, and every &minus;6 dB roughly halves.</p>
+<h4>Examples</h4>
+<table>
+<tr><th>Call</th><th>Result</th></tr>
+<tr><td><code>db_to_lin(-6.0206f)</code></td><td>about 0.5</td></tr>
+<tr><td><code>db_to_lin(20.0f)</code></td><td>10</td></tr>
+<tr><td><code>db_to_lin(0.0f)</code></td><td>1</td></tr>
+<tr><td><code>lin_to_db(0.1f)</code></td><td>about &minus;20</td></tr>
+<tr><td><code>lin_to_db(2.0f)</code></td><td>about 6.0206</td></tr>
+<tr><td><code>lin_to_db(1.0f)</code></td><td>0</td></tr>
+</table>
+<h4>Facts you need</h4>
+<ul>
+<li><code>powf(b, e)</code> from <code>&lt;math.h&gt;</code> returns b<sup>e</sup> for floats.</li>
+<li><code>log10f(x)</code> returns the base-10 logarithm of x.</li>
+<li>In C, <code>^</code> is <b>not</b> "to the power of". It is bitwise XOR: <code>10 ^ 2</code> is 8.</li>
+</ul>
+<h4>Inputs and limits</h4>
+<ul>
+<li><code>db</code> is between &minus;80 and +80.</li>
+<li><code>x</code> is between 0.0001 and 10000, so it is always above 0 (the log of 0 does not
+exist).</li>
+<li>The answers must be right to about 5 significant digits.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Each function is one formula. Which <code>&lt;math.h&gt;</code> function does each formula need?</li>
+<li>Check that <code>db / 20</code> is a float division (it is, because <code>db</code> is a
+<code>float</code>).</li>
+</ol>
+</details>""",
 r"""#include <math.h>
 
 float db_to_lin(float db) { return 0.0f; }
@@ -304,9 +619,43 @@ int main(void)
 "powf(10.0f, db / 20.0f) and 20.0f * log10f(x)."))
 
 add(P("rms", S, "RMS level", "c", "func",
-r"""<p>Write <code>float rms(const float *x, int n)</code> that returns the root-mean-square
-level &radic;(&Sigma;x&sup2;/n). <code>n</code> is at least 1. A full-scale sine has an RMS of
-1/&radic;2 &asymp; 0.707.</p>""",
+r"""<p><b>What to write.</b> A function <code>float rms(const float *x, int n)</code> that returns the
+<b>root-mean-square</b> (RMS) level of the <code>n</code> samples in <code>x</code>.</p>
+<p><b>Why it matters.</b> RMS is the usual measure of "how loud" a block of audio is. Level meters,
+automatic gain control and compressors all use it.</p>
+<h4>The formula</h4>
+<pre>rms = sqrt( (x[0]^2 + x[1]^2 + ... + x[n-1]^2) / n )</pre>
+<p>Read the name backwards and you get the steps: <b>S</b>quare every sample, take the <b>M</b>ean
+(add them up and divide by n), then take the square <b>R</b>oot.</p>
+<h4>Examples</h4>
+<table>
+<tr><th>x</th><th>Squares</th><th>Sum</th><th>Mean</th><th>RMS</th></tr>
+<tr><td>{3, 4}</td><td>9, 16</td><td>25</td><td>12.5</td><td>3.5355</td></tr>
+<tr><td>{1, &minus;1, 1, &minus;1}</td><td>1, 1, 1, 1</td><td>4</td><td>1</td><td>1</td></tr>
+<tr><td>{0.5} (n = 1)</td><td>0.25</td><td>0.25</td><td>0.25</td><td>0.5</td></tr>
+<tr><td>full-scale sine (peak 1)</td><td></td><td></td><td>0.5</td><td>0.7071 (= 1/&radic;2)</td></tr>
+</table>
+<p>Notice that negative samples count just as much as positive ones, because squaring removes the
+sign.</p>
+<h4>Inputs and limits</h4>
+<ul>
+<li><code>n</code> is at least 1 (the test uses up to 4800 samples). Samples are between &minus;1 and 1.</li>
+<li>The answer must be right to about 4 significant digits.</li>
+<li><code>sqrt</code> (double) and <code>sqrtf</code> (float) are in <code>&lt;math.h&gt;</code>.</li>
+</ul>
+<h4>Things to watch out for</h4>
+<ul>
+<li>A <code>float</code> keeps only about 7 significant digits. When you add thousands of small
+numbers to a big float sum, the low digits get lost. A <code>double</code> sum is safer.</li>
+<li>Divide by <code>n</code> (not n&minus;1), and square the samples (do not take the absolute
+value).</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>One loop builds the sum of squares.</li>
+<li>After the loop: divide, take the root, return it as a <code>float</code>.</li>
+</ol>
+</details>""",
 r"""#include <math.h>
 
 float rms(const float *x, int n)
@@ -344,10 +693,42 @@ int main(void)
 "Sum the squares (a double accumulator is safest), divide by n, take the square root."))
 
 add(P("zero_crossings", S, "Zero crossings", "c", "func",
-r"""<p>Write <code>int zero_crossings(const float *x, int n)</code> that counts the places where
-the signal changes sign between neighbouring samples. Treat 0 as positive: count index
-<code>i</code> (1 &le; i &lt; n) when <code>(x[i-1] &lt; 0) != (x[i] &lt; 0)</code>.</p>
-<p>A sine at f Hz has about 2f crossings per second; this is a cheap pitch estimate.</p>""",
+r"""<p><b>What to write.</b> A function <code>int zero_crossings(const float *x, int n)</code>. It
+counts how many times the signal changes from one side of zero to the other, between neighbouring
+samples.</p>
+<p><b>Why it matters.</b> A sine wave of f Hz crosses zero about 2f times per second (a 1 kHz tone
+sampled at 48 kHz gives about 2000 crossings in one second). So the crossing rate is a very cheap
+pitch estimate. Speech codecs also use it to tell voiced sounds (low rate) from hissing sounds (high
+rate).</p>
+<h4>The rule</h4>
+<ul>
+<li>A sample is on the <b>negative</b> side if <code>x &lt; 0</code>. Everything else is on the positive
+side. So <b>0 counts as positive</b>.</li>
+<li>For each i from 1 to n&minus;1, compare sample i&minus;1 with sample i. Count it when they are on
+different sides: <code>(x[i-1] &lt; 0) != (x[i] &lt; 0)</code>.</li>
+</ul>
+<h4>Picture</h4>
+<pre> index:    0     1     2     3     4     5     6
+ x:       0.5   0.2  -0.1  -0.4   0.3   0.6  -0.2
+ side:     +     +     -     -     +     +     -
+ change?         no    YES   no    YES   no    YES    --&gt; 3 crossings</pre>
+<h4>Examples</h4>
+<table>
+<tr><th>x</th><th>Sides</th><th>Counted at i</th><th>Result</th></tr>
+<tr><td>{0.5, 0.2, &minus;0.1, &minus;0.4, 0.3, 0.6, &minus;0.2}</td><td>+ + &minus; &minus; + + &minus;</td><td>2, 4, 6</td><td>3</td></tr>
+<tr><td>{0, 0, &minus;1, 0, 1}</td><td>+ + &minus; + +</td><td>2, 3</td><td>2</td></tr>
+<tr><td>{0.7} (n = 1)</td><td>+</td><td>none (no pairs)</td><td>0</td></tr>
+</table>
+<p>In the second row, the step from 0 to 1 is <b>not</b> a crossing, because 0 already counts as
+positive.</p>
+<h4>Inputs and limits</h4>
+<ul><li><code>n</code> is 1 to 2000.</li></ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Which indices i have a neighbour on the left? Start your loop there.</li>
+<li>For each pair, work out a true/false "is negative" for both samples and compare the two.</li>
+</ol>
+</details>""",
 r"""int zero_crossings(const float *x, int n)
 {
     return 0;
@@ -382,10 +763,53 @@ int main(void)
 "Compare the sign test of each sample with the one before it."))
 
 add(P("moving_average", S, "Moving average", "c", "func",
-r"""<p>Write <code>void moving_average(const float *x, float *y, int n, int L)</code> where
-y[i] is the mean of the last <code>L</code> inputs x[i&minus;L+1] ... x[i], counting samples
-before the start as 0. So y[i] = (x[i&minus;L+1] + ... + x[i]) / L.</p>
-<p>Try to make it O(n) with a running sum, instead of O(n&middot;L).</p>""",
+r"""<p><b>What to write.</b> A function
+<code>void moving_average(const float *x, float *y, int n, int L)</code>. For every position i, it writes
+into y[i] the average of the last <code>L</code> inputs, x[i&minus;L+1] up to x[i].</p>
+<p><b>Why it matters.</b> The moving average is the simplest smoothing filter. It is used to clean up
+sensor readings and to estimate slowly changing levels.</p>
+<h4>The formula</h4>
+<pre>y[i] = ( x[i-L+1] + x[i-L+2] + ... + x[i] ) / L</pre>
+<ul>
+<li>Samples before the start of the array (negative index) count as 0.</li>
+<li>Always divide by <code>L</code>, even at the start where fewer than L real samples exist.</li>
+</ul>
+<h4>Picture: a window of L samples slides along x</h4>
+<pre> x:   [ 3 ][ 6 ][ 9 ][12 ][15 ]          L = 3
+       \___________/
+        y[2] = (3 + 6 + 9) / 3 = 6
+            \___________/
+             y[3] = (6 + 9 + 12) / 3 = 9</pre>
+<h4>Worked example with a running sum (x = {3, 6, 9, 12, 15}, L = 3)</h4>
+<p>Instead of adding L numbers for every output, keep a running sum. Each step adds the new sample and,
+once the window is full, removes the sample that just left the window (x[i&minus;L]).</p>
+<table>
+<tr><th>i</th><th>x[i]</th><th>Add</th><th>Remove x[i&minus;L]</th><th>Sum</th><th>y[i] = sum / 3</th></tr>
+<tr><td>0</td><td>3</td><td>+3</td><td>(nothing, i &lt; L)</td><td>3</td><td>1</td></tr>
+<tr><td>1</td><td>6</td><td>+6</td><td>(nothing)</td><td>9</td><td>3</td></tr>
+<tr><td>2</td><td>9</td><td>+9</td><td>(nothing)</td><td>18</td><td>6</td></tr>
+<tr><td>3</td><td>12</td><td>+12</td><td>&minus;3 (x[0])</td><td>27</td><td>9</td></tr>
+<tr><td>4</td><td>15</td><td>+15</td><td>&minus;6 (x[1])</td><td>36</td><td>12</td></tr>
+</table>
+<h4>More examples</h4>
+<ul>
+<li>L = 1: y is a copy of x.</li>
+<li>L larger than n: x = {4, 8}, L = 4 gives y = {1, 3} (4/4 and 12/4).</li>
+</ul>
+<h4>Inputs and limits</h4>
+<ul>
+<li><code>n</code> is 1 to 3000 and <code>L</code> is 1 to 64. L may be bigger than n.</li>
+<li>Answers must be right to about 0.0001. A <code>double</code> running sum keeps it accurate.</li>
+<li>Try to make it O(n), meaning the work grows with n only. Two nested loops (n outputs &times; L
+inputs each) would be O(n&middot;L).</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>When you move from y[i&minus;1] to y[i], which one sample enters the window and which one leaves
+it?</li>
+<li>From which i onwards does a sample leave the window?</li>
+</ol>
+</details>""",
 r"""void moving_average(const float *x, float *y, int n, int L)
 {
 }
@@ -424,10 +848,55 @@ int main(void)
 "Keep a running sum: add x[i], and once i >= L subtract x[i - L]."))
 
 add(P("fir", S, "FIR filter (block)", "c", "func",
-r"""<p>Write the direct-form FIR filter</p>
+r"""<p><b>What to write.</b> The direct-form <b>FIR filter</b> (finite impulse response filter) for a
+whole block of samples:</p>
 <pre>void fir(const float *h, int M, const float *x, float *y, int n);</pre>
-<p>with y[i] = &Sigma;<sub>k=0</sub><sup>M&minus;1</sup> h[k]&middot;x[i&minus;k], where inputs
-before the start are 0. <code>M</code> is 1 to 64.</p>""",
+<p><code>h</code> holds the <code>M</code> filter coefficients (called <em>taps</em>), <code>x</code>
+holds <code>n</code> input samples, and you write <code>n</code> output samples into
+<code>y</code>.</p>
+<p><b>Why it matters.</b> FIR filters are everywhere in DSP: equalisers, anti-alias filters, channel
+filters in modems. This loop is the classic DSP interview question.</p>
+<h4>The formula</h4>
+<pre>y[i] = h[0]*x[i] + h[1]*x[i-1] + h[2]*x[i-2] + ... + h[M-1]*x[i-M+1]</pre>
+<p>Inputs before the start of the array (negative index) count as 0. Each output mixes the current
+input with the M&minus;1 inputs before it.</p>
+<h4>Picture: a tapped delay line</h4>
+<pre> x[i] ---+--[z^-1]--+--[z^-1]--+-- ... --[z^-1]--+
+         |   x[i-1] |   x[i-2]  |                 | x[i-M+1]
+       *h[0]      *h[1]       *h[2]            *h[M-1]
+         |          |           |                 |
+         +---------(+)---------(+)---- ... ------(+)----&gt; y[i]
+
+ [z^-1] means "one sample of delay"</pre>
+<h4>Worked examples</h4>
+<p>Example 1: h = {0.5, 0.25}, x = {1, 0, 0, 2}.</p>
+<table>
+<tr><th>i</th><th>Sum</th><th>y[i]</th></tr>
+<tr><td>0</td><td>0.5&middot;x[0] + 0.25&middot;x[&minus;1] = 0.5&middot;1 + 0.25&middot;0</td><td>0.5</td></tr>
+<tr><td>1</td><td>0.5&middot;0 + 0.25&middot;1</td><td>0.25</td></tr>
+<tr><td>2</td><td>0.5&middot;0 + 0.25&middot;0</td><td>0</td></tr>
+<tr><td>3</td><td>0.5&middot;2 + 0.25&middot;0</td><td>1.0</td></tr>
+</table>
+<p>Example 2: h = {1, 1, 1} (a sum of the last 3 inputs), x = {1, 2, 3, 4} gives
+y = {1, 3, 6, 9}.</p>
+<p>Useful self-test: if x is an impulse {1, 0, 0, &hellip;}, the output is the taps themselves,
+y = {h[0], h[1], h[2], &hellip;}.</p>
+<h4>Inputs and limits</h4>
+<ul>
+<li><code>M</code> is 1 to 64, <code>n</code> is 1 to 1000.</li>
+<li>Answers must be right to about 0.0001.</li>
+</ul>
+<h4>Things to watch out for</h4>
+<ul>
+<li>For the first outputs, i&minus;k can be negative. Reading <code>x[-1]</code> reads memory outside
+the array. Skip those terms (they are 0).</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>You need two loops: one over the outputs i, and one over the taps k.</li>
+<li>For a given i, which values of k give a valid index i&minus;k?</li>
+</ol>
+</details>""",
 r"""void fir(const float *h, int M, const float *x, float *y, int n)
 {
 }
@@ -466,12 +935,63 @@ int main(void)
 "Two loops: over output samples i, and over taps k with k <= i (so you never read x[-1])."))
 
 add(P("fir_state", S, "FIR filter with a circular buffer", "c", "func",
-r"""<p>In real time, samples arrive one at a time, so the filter must remember its past inputs.
-The starter code defines the state. Write:</p>
-<pre>void  fir_init(Fir *f, const float *h, int M); // copy the taps, clear the history
-float fir_process(Fir *f, float x);            // one sample in, one sample out</pre>
-<p>Use <code>z</code> as a circular buffer with write index <code>pos</code>, so each sample costs
-O(M) and nothing is shifted. The output must equal the block FIR from the previous problem.</p>""",
+r"""<p><b>What to write.</b> The same FIR filter as the previous problem, but for <b>real time</b>:
+samples arrive one at a time, and you return one output for each one. The starter code defines the
+state structure <code>Fir</code>. Write:</p>
+<pre>// copy the taps and clear the history
+void  fir_init(Fir *f, const float *h, int M);
+
+// one sample in, one sample out
+float fir_process(Fir *f, float x);</pre>
+<p><b>Why it matters.</b> An audio driver hands you the signal sample by sample (or in small blocks).
+To compute y = h[0]&middot;x[n] + h[1]&middot;x[n&minus;1] + &hellip;, the filter must remember its last M
+inputs between calls.</p>
+<h4>The idea: a circular buffer</h4>
+<p>The array <code>z</code> holds the last <code>M</code> inputs. You could shift all of them by one
+place for every new sample, but that is slow. Instead, write the new sample over the <b>oldest</b> one
+and move an index. <code>pos</code> is the slot where the next input goes.</p>
+<h4>The rule, step by step (one call of fir_process)</h4>
+<ol>
+<li>Store the new input: z[pos] = x. It replaces the oldest input.</li>
+<li>Compute the output. h[0] goes with the newest input (slot pos), h[1] with the slot before it,
+and so on, going <b>backwards</b> through z. Going back from slot 0 wraps to slot M&minus;1.</li>
+<li>Move <code>pos</code> one slot forward, wrapping from M&minus;1 to 0.</li>
+</ol>
+<h4>Picture (M = 3, while computing the output for the 4th input, x = 4)</h4>
+<pre> slot:     0       1       2
+ z:     [  4  ] [  2  ] [  3  ]
+           ^
+          pos = 0 (the 4 was just written here, over the oldest input, 1)
+
+ read order:  slot 0 (newest, * h[0]) -&gt; slot 2 (* h[1]) -&gt; slot 1 (* h[2])
+              going left, and jumping from slot 0 round to slot 2</pre>
+<h4>Worked example: h = {0.5, 0.3, 0.2}, M = 3, inputs 1, 2, 3, 4, 5</h4>
+<table>
+<tr><th>Input</th><th>Slot written</th><th>z after writing</th><th>Slots read for h[0], h[1], h[2]</th><th>Output</th></tr>
+<tr><td>1</td><td>0</td><td>[1, 0, 0]</td><td>0, 2, 1</td><td>0.5</td></tr>
+<tr><td>2</td><td>1</td><td>[1, 2, 0]</td><td>1, 0, 2</td><td>1.3</td></tr>
+<tr><td>3</td><td>2</td><td>[1, 2, 3]</td><td>2, 1, 0</td><td>2.3</td></tr>
+<tr><td>4</td><td>0</td><td>[4, 2, 3]</td><td>0, 2, 1</td><td>3.3</td></tr>
+<tr><td>5</td><td>1</td><td>[4, 5, 3]</td><td>1, 0, 2</td><td>4.3</td></tr>
+</table>
+<p>Check the 4th row: 0.5&middot;4 + 0.3&middot;3 + 0.2&middot;2 = 2 + 0.9 + 0.4 = 3.3. The outputs are
+exactly what the block FIR would give for x = {1, 2, 3, 4, 5}.</p>
+<h4>Requirements</h4>
+<ul>
+<li>The output must equal the block FIR from the previous problem (to about 0.0001).</li>
+<li><code>fir_init</code> must set <b>everything</b> it uses: M, the taps, the history (all 0) and
+<code>pos</code>. The test fills the structure with garbage before calling it.</li>
+<li>Each call should cost O(M): a loop over the taps, with nothing shifted.</li>
+<li><code>M</code> is 1 to 64. With M = 1 there is only one slot, and <code>pos</code> stays 0.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Use two indices in the loop: k goes forwards through h, and a slot index j goes backwards through
+z.</li>
+<li>How do you step j backwards so that after 0 it becomes M&minus;1?</li>
+<li>When must <code>pos</code> move: before or after the output is computed?</li>
+</ol>
+</details>""",
 r"""#define FIR_MAX 64
 
 typedef struct {
@@ -549,11 +1069,67 @@ int main(void)
 "Write x at z[pos]. Then walk backwards from pos (wrapping from 0 to M-1) while stepping forwards through h. Finally advance pos modulo M."))
 
 add(P("biquad_df1", S, "Biquad, Direct Form I", "c", "func",
-r"""<p>The biquad is the workhorse of audio EQ. With a<sub>0</sub> = 1:</p>
-<pre>y[n] = b0 x[n] + b1 x[n-1] + b2 x[n-2] - a1 y[n-1] - a2 y[n-2]</pre>
-<p>Direct Form I keeps the last two inputs and the last two outputs. Write</p>
-<pre>void  bq1_init(BiquadDF1 *q, float b0, float b1, float b2, float a1, float a2); // state = 0
-float bq1_process(BiquadDF1 *q, float x);</pre>""",
+r"""<p><b>What to write.</b> A <b>biquad</b> filter in "Direct Form I". The starter code defines the
+structure <code>BiquadDF1</code>. Write:</p>
+<pre>// store the five coefficients and set the state to 0
+void  bq1_init(BiquadDF1 *q, float b0, float b1, float b2,
+               float a1, float a2);
+
+// one sample in, one sample out
+float bq1_process(BiquadDF1 *q, float x);</pre>
+<p><b>Why it matters.</b> A biquad is a second-order <b>IIR</b> filter: it uses past outputs as well as
+past inputs ("infinite impulse response"). Low-pass, high-pass, band-pass, notch and EQ filters are all
+biquads; only the five coefficients change. Longer filters are built as chains of biquads. It is the
+workhorse of audio EQ.</p>
+<h4>The formula (with a<sub>0</sub> = 1)</h4>
+<pre>y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]</pre>
+<p>Note the <b>minus</b> signs in front of a1 and a2. x[n&minus;1] means "the input one sample ago",
+y[n&minus;2] means "the output two samples ago", and so on.</p>
+<h4>Picture (signal flow)</h4>
+<pre> x[n] --+--&gt;(*b0)--&gt;(+)--------------------+--&gt; y[n]
+        |            ^                     |
+      [z^-1]         |                   [z^-1]
+        | x[n-1]     |                     | y[n-1]
+        +--&gt;(*b1)--&gt;(+)&lt;-----(*-a1)&lt;-------+
+        |            ^                     |
+      [z^-1]         |                   [z^-1]
+        | x[n-2]     |                     | y[n-2]
+        +--&gt;(*b2)--&gt;(+)&lt;-----(*-a2)&lt;-------+
+
+ [z^-1] = one sample of delay</pre>
+<h4>The state</h4>
+<p>Direct Form I remembers the last two inputs and the last two outputs:
+<code>x1</code> = x[n&minus;1], <code>x2</code> = x[n&minus;2], <code>y1</code> = y[n&minus;1],
+<code>y2</code> = y[n&minus;2]. After computing y, move the history along by one: the old x1 becomes x2,
+the current input becomes x1, and the same for y.</p>
+<h4>Worked example</h4>
+<p>Coefficients b0 = 0.25, b1 = 0.5, b2 = 0.25, a1 = &minus;0.5, a2 = 0.25. Input: an impulse
+1, 0, 0, 0, 0, 0. (Because a1 is negative, &minus;a1&middot;y1 = +0.5&middot;y1.)</p>
+<table>
+<tr><th>n</th><th>x</th><th>x1</th><th>x2</th><th>y1</th><th>y2</th><th>y</th></tr>
+<tr><td>0</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0.25</td></tr>
+<tr><td>1</td><td>0</td><td>1</td><td>0</td><td>0.25</td><td>0</td><td>0.625</td></tr>
+<tr><td>2</td><td>0</td><td>0</td><td>1</td><td>0.625</td><td>0.25</td><td>0.5</td></tr>
+<tr><td>3</td><td>0</td><td>0</td><td>0</td><td>0.5</td><td>0.625</td><td>0.09375</td></tr>
+<tr><td>4</td><td>0</td><td>0</td><td>0</td><td>0.09375</td><td>0.5</td><td>&minus;0.078125</td></tr>
+<tr><td>5</td><td>0</td><td>0</td><td>0</td><td>&minus;0.078125</td><td>0.09375</td><td>&minus;0.0625</td></tr>
+</table>
+<p>Check row 2: 0.25&middot;1 + 0.5&middot;0.625 &minus; 0.25&middot;0.25 = 0.25 + 0.3125 &minus;
+0.0625 = 0.5. The output keeps going after the input has stopped: that is the "infinite" response.</p>
+<h4>Requirements</h4>
+<ul>
+<li><code>bq1_init</code> stores the five coefficients and sets x1, x2, y1, y2 to 0. The test fills the
+structure with garbage first, so every field must be set.</li>
+<li>The test runs low-pass filters (100 Hz to 12 kHz at 48 kHz) on noise. Outputs must match the
+formula to about 0.001.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Compute y from the formula using the state as it is <b>before</b> this sample.</li>
+<li>Then update the history. In which order must you copy the values so that nothing is overwritten
+before it has been moved?</li>
+</ol>
+</details>""",
 r"""typedef struct {
     float b0, b1, b2, a1, a2;   // coefficients
     float x1, x2, y1, y2;       // state
@@ -618,12 +1194,59 @@ int main(void)
 "Compute y from the formula, then shift the history: x2 = x1, x1 = x, y2 = y1, y1 = y. bq1_init must zero the state."))
 
 add(P("biquad_tdf2", S, "Biquad, Transposed Direct Form II", "c", "func",
-r"""<p>Transposed Direct Form II computes the same filter with only two state variables, and is
-the usual choice in floating point:</p>
-<pre>y  = b0 x + s1
-s1 = b1 x - a1 y + s2
-s2 = b2 x - a2 y</pre>
-<p>Write <code>bq2_init</code> and <code>bq2_process</code> for the struct in the starter code.</p>""",
+r"""<p><b>What to write.</b> The same biquad filter in <b>Transposed Direct Form II</b> (TDF2), for
+the structure <code>BiquadTDF2</code> in the starter code: <code>bq2_init</code> (store the coefficients,
+set the state to 0) and <code>bq2_process</code> (one sample in, one sample out).</p>
+<p><b>Why it matters.</b> TDF2 computes exactly the same filter as Direct Form I, but it needs only
+<b>two</b> state variables instead of four, and it behaves well in floating point. That makes it the
+usual choice for float audio code.</p>
+<h4>The three lines (run them in this order for every sample)</h4>
+<pre>y  = b0*x + s1
+s1 = b1*x - a1*y + s2
+s2 = b2*x - a2*y</pre>
+<p><code>s1</code> and <code>s2</code> are partial sums that were prepared during earlier samples.
+<code>y</code> must be computed first, because the new s1 and s2 both need it. The new s1 uses the
+<b>old</b> s2, which is why s1 is updated before s2.</p>
+<h4>Picture (signal flow)</h4>
+<pre> x[n] -----+---------------+---------------+
+           |               |               |
+         (*b0)           (*b1)           (*b2)
+           |               |               |
+           v               v               v
+ y[n] &lt;---(+)&lt;--[z^-1]----(+)&lt;--[z^-1]----(+)
+           |      s1       ^      s2       ^
+           |               |               |
+           +-----------&gt;(*-a1)             |
+           |                               |
+           +---------------------------&gt;(*-a2)
+
+ [z^-1] = one sample of delay (this is where s1 and s2 are stored)</pre>
+<h4>Worked example (same filter as the Direct Form I problem)</h4>
+<p>b0 = 0.25, b1 = 0.5, b2 = 0.25, a1 = &minus;0.5, a2 = 0.25. Input: 1, 0, 0, 0, &hellip;</p>
+<table>
+<tr><th>n</th><th>x</th><th>s1 before</th><th>s2 before</th><th>y</th><th>new s1</th><th>new s2</th></tr>
+<tr><td>0</td><td>1</td><td>0</td><td>0</td><td>0.25</td><td>0.625</td><td>0.1875</td></tr>
+<tr><td>1</td><td>0</td><td>0.625</td><td>0.1875</td><td>0.625</td><td>0.5</td><td>&minus;0.15625</td></tr>
+<tr><td>2</td><td>0</td><td>0.5</td><td>&minus;0.15625</td><td>0.5</td><td>0.09375</td><td>&minus;0.125</td></tr>
+<tr><td>3</td><td>0</td><td>0.09375</td><td>&minus;0.125</td><td>0.09375</td><td>&minus;0.078125</td><td>&minus;0.0234375</td></tr>
+</table>
+<p>Check row 0: new s1 = 0.5&middot;1 &minus; (&minus;0.5)&middot;0.25 + 0 = 0.625, and new s2 =
+0.25&middot;1 &minus; 0.25&middot;0.25 = 0.1875. The outputs 0.25, 0.625, 0.5, 0.09375 are the same as in
+Direct Form I.</p>
+<h4>Requirements</h4>
+<ul>
+<li><code>bq2_init</code> must set all five coefficients and both state values. The test fills the
+structure with garbage first.</li>
+<li>The test runs high-pass filters (80 Hz to 15 kHz at 48 kHz) on noise and compares with the
+Direct Form I formula, to about 0.001.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Copy the three lines into your function, reading and writing the state through the pointer
+<code>q</code>.</li>
+<li>Ask yourself for each line: does it need the old value of a state variable, or the new one?</li>
+</ol>
+</details>""",
 r"""typedef struct {
     float b0, b1, b2, a1, a2;
     float s1, s2;
@@ -684,11 +1307,43 @@ int main(void)
 "Use the three lines in order. Compute y first, because s1 and s2 need it."))
 
 add(P("onepole", S, "One-pole smoother", "c", "func",
-r"""<p>The one-pole low-pass y[n] = y[n&minus;1] + a&middot;(x[n] &minus; y[n&minus;1]) smooths
-control values such as a volume knob, so that the volume changes without clicks. Write</p>
-<pre>float onepole(float *state, float a, float x);</pre>
-<p>which updates <code>*state</code> (the previous output) and returns the new output.
-<code>a</code> is between 0 and 1.</p>""",
+r"""<p><b>What to write.</b> A function <code>float onepole(float *state, float a, float x)</code>.
+<code>*state</code> holds the previous output. The function computes the new output, stores it in
+<code>*state</code>, and returns it.</p>
+<p><b>Why it matters.</b> This one-pole low-pass filter smooths control values such as a volume knob.
+If the volume jumps straight from one value to another, you hear a click. Smoothed, it glides there in
+a few milliseconds.</p>
+<h4>The formula</h4>
+<pre>y[n] = y[n-1] + a * (x[n] - y[n-1])</pre>
+<p>In words: (x[n] &minus; y[n&minus;1]) is the gap between where the output is and where the input
+wants it to be. Each sample, the output moves the fraction <code>a</code> of that gap.</p>
+<h4>Picture (a = 0.5, input jumps from 0 to 1 and stays there)</h4>
+<pre> y:  0 -----&gt; 0.5 -----&gt; 0.75 -----&gt; 0.875 -----&gt; 0.9375 ... --&gt; 1
+       half of    half of     half of      half of
+       the gap    the gap     the gap      the gap</pre>
+<h4>Examples (the state starts at 0)</h4>
+<table>
+<tr><th>a</th><th>Inputs</th><th>Outputs</th><th>Note</th></tr>
+<tr><td>0.5</td><td>1, 1, 1, 1</td><td>0.5, 0.75, 0.875, 0.9375</td><td></td></tr>
+<tr><td>0.1</td><td>1, 1, 1, 1</td><td>0.1, 0.19, 0.271, 0.3439</td><td>smaller a: slower, smoother</td></tr>
+<tr><td>0.5</td><td>1, 1, 0, 0</td><td>0.5, 0.75, 0.375, 0.1875</td><td>falls the same way</td></tr>
+<tr><td>1.0</td><td>1, 0.3</td><td>1, 0.3</td><td>a = 1: output = input, no smoothing</td></tr>
+</table>
+<p>With a = 0 the output would never change.</p>
+<h4>Facts you need</h4>
+<ul>
+<li>The function has no structure of its own. The caller keeps the state variable and passes its
+address. Writing through the pointer (<code>*state = &hellip;</code>) is what makes the value survive
+until the next call.</li>
+<li>After each call, <code>*state</code> must equal the value you return. The test checks this.</li>
+<li><code>a</code> is between 0 and 1 (the test uses 0.01 to 0.5).</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Which variable holds y[n&minus;1]? Read it through the pointer.</li>
+<li>Compute the new value, write it back through the pointer, and return the same value.</li>
+</ol>
+</details>""",
 r"""float onepole(float *state, float a, float x)
 {
     return x;
@@ -722,11 +1377,49 @@ int main(void)
 "*state += a * (x - *state); return *state;"))
 
 add(P("dc_blocker", S, "DC blocker", "c", "func",
-r"""<p>A microphone signal often has a small constant offset (DC). The DC blocker
-y[n] = x[n] &minus; x[n&minus;1] + R&middot;y[n&minus;1], with R close to 1 (e.g. 0.995), removes
-it. Write</p>
+r"""<p><b>What to write.</b> A <b>DC blocker</b>: a filter that removes a constant offset from a
+signal. The starter code defines the structure <code>DcBlock</code>. Write:</p>
 <pre>void  dc_init(DcBlock *b, float R);  // store R, clear the state
-float dc_process(DcBlock *b, float x);</pre>""",
+float dc_process(DcBlock *b, float x);</pre>
+<p><b>Why it matters.</b> A microphone or an ADC often adds a small constant value (an offset) to the
+signal. A constant is a 0 Hz signal, also called <b>DC</b> ("direct current"). It wastes headroom and
+causes clicks when the sound starts or stops. The DC blocker removes it and keeps the sound.</p>
+<h4>The formula</h4>
+<pre>y[n] = x[n] - x[n-1] + R * y[n-1]        R is close to 1, for example 0.995</pre>
+<ul>
+<li>x[n] &minus; x[n&minus;1] is the change from the last sample. A constant does not change, so this
+part removes it.</li>
+<li>The term R&middot;y[n&minus;1] feeds back part of the old output. It gives back the low
+frequencies that the difference alone would weaken, except 0 Hz itself.</li>
+<li>The closer R is to 1, the fewer low frequencies are lost, but the slower the offset dies away.</li>
+</ul>
+<h4>Picture (signal flow)</h4>
+<pre> x[n] --+------------------&gt;(+)--------------+--&gt; y[n]
+        |                   ^ ^              |
+      [z^-1]                | |            [z^-1]
+        | x[n-1]            | |              | y[n-1]
+        +-----&gt;(*-1)--------+ +-----(*R)&lt;----+</pre>
+<h4>Examples (state starts at 0, input is a constant 1)</h4>
+<table>
+<tr><th>R</th><th>Outputs</th></tr>
+<tr><td>0.5</td><td>1, 0.5, 0.25, 0.125, 0.0625 (halves every sample, towards 0)</td></tr>
+<tr><td>0.995</td><td>1, 0.995, 0.990025, 0.985075 (falls by 0.5 % per sample)</td></tr>
+</table>
+<p>With R = 0.995 and a constant input of 0.25, the output is about 0.152 after 100 samples, 0.025
+after 460 samples and 0.0017 after 1000 samples. The offset is gone.</p>
+<h4>Requirements</h4>
+<ul>
+<li>The state is <code>x1</code> (previous input) and <code>y1</code> (previous output).
+<code>dc_init</code> stores R and sets both to 0. The test fills the structure with garbage first.</li>
+<li>The test feeds 0.25 + a 440 Hz sine (48 kHz, 20000 samples) with R = 0.995. Every output must match
+the formula (to about 0.0001), and at the end the offset must be removed (|y| &lt; 0.15).</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>It is the same pattern as the biquad: compute y from the current state, then update the state.</li>
+<li>Which two values must you remember for the next call?</li>
+</ol>
+</details>""",
 r"""typedef struct {
     float R;
     float x1;   // previous input
@@ -785,12 +1478,56 @@ int main(void)
 "Same pattern as the biquad: compute y, then remember x and y for the next call."))
 
 add(P("frac_delay", S, "Fractional delay read", "c", "func",
-r"""<p>Chorus, flanger and pitch effects read a delay line <em>between</em> samples. Write</p>
-<pre>float frac_read(const float *buf, int len, float pos);</pre>
-<p>that returns the linearly interpolated value at position <code>pos</code>
-(0 &le; pos &lt; len). The buffer is circular, so after index <code>len&minus;1</code> comes 0:</p>
-<pre>i = floor(pos), frac = pos - i
-value = buf[i] * (1 - frac) + buf[(i + 1) % len] * frac</pre>""",
+r"""<p><b>What to write.</b> A function
+<code>float frac_read(const float *buf, int len, float pos)</code>. It reads the circular buffer
+<code>buf</code> (of <code>len</code> samples) at a position <code>pos</code> that may lie
+<b>between</b> two samples, using straight-line (linear) interpolation.</p>
+<p><b>Why it matters.</b> Chorus, flanger, vibrato and pitch-shift effects read a delay line at a time
+that changes smoothly. That time is usually not a whole number of samples, so the value between two
+samples has to be estimated.</p>
+<h4>The rule, step by step</h4>
+<ol>
+<li>i = the whole part of pos (for example 1.25 &rarr; 1).</li>
+<li>frac = pos &minus; i, the part after the point (0.25). It is between 0 and 1.</li>
+<li>j = the next index, i + 1. But the buffer is circular: after index len&minus;1 comes index 0. So
+if i + 1 equals len, use j = 0.</li>
+<li>value = buf[i]&middot;(1 &minus; frac) + buf[j]&middot;frac. When frac is 0 you get buf[i]; as frac
+grows towards 1, the value moves in a straight line towards buf[j].</li>
+</ol>
+<h4>Picture (len = 4)</h4>
+<pre> index:     0       1       2       3     (after 3 comes 0 again)
+ buf:    [ 10 ]  [ 20 ]  [ 30 ]  [ 40 ]
+
+ pos = 1.25: between index 1 and index 2, a quarter of the way
+     pos:  1.0    1.25                   2.0
+            |-------*----------------------|
+   value:  20     22.5                   30
+
+ pos = 3.5: between index 3 and index 0 (wrapped round), halfway
+     pos:  3.0            3.5            4.0 = index 0
+            |--------------*--------------|
+   value:  40             25             10</pre>
+<h4>Examples (buf = {10, 20, 30, 40}, len = 4)</h4>
+<table>
+<tr><th>pos</th><th>i</th><th>frac</th><th>j</th><th>Value</th></tr>
+<tr><td>1.25</td><td>1</td><td>0.25</td><td>2</td><td>20&middot;0.75 + 30&middot;0.25 = 22.5</td></tr>
+<tr><td>0.75</td><td>0</td><td>0.75</td><td>1</td><td>10&middot;0.25 + 20&middot;0.75 = 17.5</td></tr>
+<tr><td>2.0</td><td>2</td><td>0</td><td>3</td><td>30</td></tr>
+<tr><td>3.5</td><td>3</td><td>0.5</td><td>0 (wrapped)</td><td>40&middot;0.5 + 10&middot;0.5 = 25</td></tr>
+<tr><td>0.0</td><td>0</td><td>0</td><td>1</td><td>10</td></tr>
+</table>
+<h4>Inputs and limits</h4>
+<ul>
+<li>0 &le; pos &lt; len, and <code>len</code> is 2 to 64.</li>
+<li>For a value that is not negative, the cast <code>(int)pos</code> gives the whole part.</li>
+<li>The answer must be right to about 0.00001.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Find i and frac first.</li>
+<li>Which i is the dangerous one, where i + 1 would point past the end of the buffer?</li>
+</ol>
+</details>""",
 r"""float frac_read(const float *buf, int len, float pos)
 {
     return 0.0f;
@@ -826,10 +1563,38 @@ int main(void)
 "(int)pos gives floor for non-negative pos. Remember to wrap the second index to 0."))
 
 add(P("decimate2", S, "Decimate by 2", "c", "func",
-r"""<p>Write <code>int decimate2(const float *x, int n, float *y)</code> that halves the sample
-rate with the simplest anti-alias filter, a 2-point average:
-y[k] = 0.5&middot;(x[2k] + x[2k+1]). Return the number of outputs, n/2 (a last odd sample is
-dropped).</p>""",
+r"""<p><b>What to write.</b> A function <code>int decimate2(const float *x, int n, float *y)</code>.
+It halves the sample rate: every pair of input samples becomes one output sample, the average of the
+pair. It returns the number of outputs written.</p>
+<p><b>Why it matters.</b> Lowering the sample rate (for example from 48 kHz to 24 kHz) halves the work
+for all later processing. But you cannot just throw every second sample away: frequencies that are too
+high for the new rate would fold back and appear as false low tones (this is called <b>aliasing</b>).
+So you first filter out the high frequencies. Averaging two neighbours is the simplest such filter.</p>
+<h4>The rule</h4>
+<pre>y[k] = 0.5 * (x[2k] + x[2k+1])      for k = 0, 1, ..., n/2 - 1
+return n / 2                         (integer division)</pre>
+<p>If <code>n</code> is odd, the last sample has no partner and is dropped.</p>
+<h4>Picture</h4>
+<pre> x:  [ 1 ][ 3 ]  [ 2 ][ 6 ]  [ 5 ]        n = 5
+     \_______/   \_______/     |
+         |           |       dropped (no partner)
+ y:    [ 2 ]       [ 4 ]                  return 2</pre>
+<h4>Examples</h4>
+<table>
+<tr><th>x</th><th>n</th><th>y</th><th>Return</th></tr>
+<tr><td>{1, 3, 2, 6, 5}</td><td>5</td><td>{2, 4}</td><td>2</td></tr>
+<tr><td>{4, 0, &minus;1, 1}</td><td>4</td><td>{2, 0}</td><td>2</td></tr>
+<tr><td>{7}</td><td>1</td><td>nothing written</td><td>0</td></tr>
+<tr><td>{} (empty)</td><td>0</td><td>nothing written</td><td>0</td></tr>
+</table>
+<h4>Inputs and limits</h4>
+<ul><li><code>n</code> is 0 to 1001.</li></ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>How many outputs are there? Loop over the outputs k, not over the inputs.</li>
+<li>Which two input indices belong to output k?</li>
+</ol>
+</details>""",
 r"""int decimate2(const float *x, int n, float *y)
 {
     return 0;
@@ -864,14 +1629,74 @@ int main(void)
 "Loop k from 0 to n/2 - 1."))
 
 add(P("goertzel", S, "Goertzel tone detector", "c", "func",
-r"""<p>The Goertzel algorithm measures the power at one DFT bin <code>k</code> with a tiny
-recursive filter. Phones use it to detect DTMF key tones. Write
-<code>float goertzel_power(const float *x, int N, int k)</code>:</p>
-<pre>coeff = 2 cos(2 pi k / N)
-s1 = s2 = 0
-for each sample:  s = x[i] + coeff*s1 - s2;  s2 = s1;  s1 = s
+r"""<p><b>What to write.</b> A function
+<code>float goertzel_power(const float *x, int N, int k)</code>. It measures how strong one frequency is
+in the block of <code>N</code> samples <code>x</code>, using the <b>Goertzel algorithm</b>.</p>
+<p><b>Why it matters.</b> When you press a key on a phone, it sends two tones at once (DTMF). The
+receiver only needs to know which of 8 known frequencies are present. A full FFT computes all N
+frequencies; Goertzel computes just one, with one multiply per sample and two state variables. It is a
+favourite DSP interview topic.</p>
+<h4>What is being measured</h4>
+<p>The N-point DFT splits a block into N frequency "bins". Bin <code>k</code> is the frequency
+k&middot;fs/N (fs = sample rate). Its value is X[k] = &Sigma; x[i]&middot;e<sup>&minus;j2&pi;ki/N</sup>,
+and its power is |X[k]|<sup>2</sup>. Your function returns this power, but computed the cheap way.</p>
+<h4>The algorithm</h4>
+<pre>coeff = 2 * cos(2 * pi * k / N)
+s1 = 0, s2 = 0
+for each sample x[i], i = 0 .. N-1:
+    s  = x[i] + coeff*s1 - s2
+    s2 = s1
+    s1 = s
 power = s1*s1 + s2*s2 - coeff*s1*s2</pre>
-<p>The result equals |X[k]|&sup2; of the N-point DFT.</p>""",
+<p>s1 is the last value of s, and s2 the one before it. So the loop is a small recursive filter that
+"rings" at frequency k.</p>
+<pre> x[i] ----&gt;(+)------------+-----&gt; s   (stored as the new s1)
+           ^ ^            |
+           | |          [z^-1]
+           | |            | s1
+           | +--(*coeff)--+
+           |              |
+           |            [z^-1]
+           |              | s2
+           +----(*-1)-----+</pre>
+<h4>Worked example: N = 8, k = 1, x[i] = cos(2&pi;i/8)</h4>
+<p>This input is a cosine of amplitude 1 that fits exactly one cycle in the block, so it sits exactly
+on bin 1. coeff = 2&middot;cos(&pi;/4) = 1.41421. Values rounded to 4 decimals:</p>
+<table>
+<tr><th>i</th><th>x[i]</th><th>s = x + coeff&middot;s1 &minus; s2</th><th>s1 after</th><th>s2 after</th></tr>
+<tr><td>0</td><td>1</td><td>1 + 0 &minus; 0 = 1</td><td>1</td><td>0</td></tr>
+<tr><td>1</td><td>0.7071</td><td>0.7071 + 1.4142 &minus; 0 = 2.1213</td><td>2.1213</td><td>1</td></tr>
+<tr><td>2</td><td>0</td><td>0 + 3 &minus; 1 = 2</td><td>2</td><td>2.1213</td></tr>
+<tr><td>3</td><td>&minus;0.7071</td><td>&minus;0.7071 + 2.8284 &minus; 2.1213 = 0</td><td>0</td><td>2</td></tr>
+<tr><td>4</td><td>&minus;1</td><td>&minus;1 + 0 &minus; 2 = &minus;3</td><td>&minus;3</td><td>0</td></tr>
+<tr><td>5</td><td>&minus;0.7071</td><td>&minus;0.7071 &minus; 4.2426 &minus; 0 = &minus;4.9497</td><td>&minus;4.9497</td><td>&minus;3</td></tr>
+<tr><td>6</td><td>0</td><td>0 &minus; 7 + 3 = &minus;4</td><td>&minus;4</td><td>&minus;4.9497</td></tr>
+<tr><td>7</td><td>0.7071</td><td>0.7071 &minus; 5.6569 + 4.9497 = 0</td><td>0</td><td>&minus;4</td></tr>
+</table>
+<p>power = 0&sup2; + (&minus;4)&sup2; &minus; 1.4142&middot;0&middot;(&minus;4) = <b>16</b>. That is
+(N/2)&sup2;, the DFT power of a cosine of amplitude 1 sitting exactly on the bin.</p>
+<h4>More results</h4>
+<table>
+<tr><th>Input (N = 8)</th><th>k</th><th>Power</th></tr>
+<tr><td>the same cosine (on bin 1)</td><td>2</td><td>0 (up to rounding): the tone is not at bin 2</td></tr>
+<tr><td>all ones (a constant, 0 Hz)</td><td>1</td><td>0 (up to rounding)</td></tr>
+<tr><td>sin(2&pi;&middot;2i/8) (on bin 2)</td><td>2</td><td>16</td></tr>
+</table>
+<h4>Inputs and limits</h4>
+<ul>
+<li><code>N</code> is 32 to 256, and <code>k</code> is 1 to N/2 &minus; 1.</li>
+<li>The result must match |X[k]|&sup2; to about 0.5 %.</li>
+<li><code>cosf</code> is in <code>&lt;math.h&gt;</code>. <code>M_PI</code> is not part of standard C,
+so write &pi; as a number: 3.14159265358979.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Compute coeff once, before the loop.</li>
+<li>Inside the loop, follow the three lines exactly. What would go wrong if you set s1 = s before
+s2 = s1?</li>
+<li>After the loop, s1 and s2 are all you need for the power.</li>
+</ol>
+</details>""",
 r"""#include <math.h>
 
 float goertzel_power(const float *x, int N, int k)
@@ -913,11 +1738,56 @@ int main(void)
 "Follow the pseudo-code exactly; the order s2 = s1; s1 = s matters."))
 
 add(P("nlms_update", S, "NLMS weight update", "c", "func",
-r"""<p>The normalised LMS update, the heart of echo cancellers and noise cancellers, is</p>
-<pre>w[k] += mu * e * x[k] / (eps + sum of x[j]^2)</pre>
-<p>where x is the current input vector (newest sample first), e = d &minus; y is the error,
-and eps avoids division by zero. Write</p>
-<pre>void nlms_update(float *w, const float *x, int M, float e, float mu, float eps);</pre>""",
+r"""<p><b>What to write.</b> One weight update of the <b>NLMS</b> (normalised least mean squares)
+adaptive filter:</p>
+<pre>void nlms_update(float *w, const float *x, int M,
+                 float e, float mu, float eps);</pre>
+<p><b>Why it matters.</b> An adaptive filter changes its own coefficients while it runs, to make its
+output match a target signal. NLMS is the heart of echo cancellers (in phones and conference systems)
+and of active noise cancellation.</p>
+<h4>The setting</h4>
+<pre>                 +-------------------+
+ x (inputs) --+-&gt;| filter, weights w |--&gt; y --&gt;(-)--&gt; e = d - y
+              |  +-------------------+          ^
+              |            ^                    |
+              |            | nudge w            d (the target)
+              +------------+---- using x and e</pre>
+<ul>
+<li><code>w[0..M-1]</code>: the filter weights (coefficients). You change them in place.</li>
+<li><code>x[0..M-1]</code>: the current input vector, <b>newest sample first</b> (x[0] is the newest,
+x[1] the one before, and so on).</li>
+<li><code>e</code>: the error, e = d &minus; y, already computed by the caller (y = &Sigma; w[k]&middot;x[k]
+was the filter output and d the target).</li>
+<li><code>mu</code>: the step size (how big a correction to make), and <code>eps</code>: a tiny number
+that stops a division by zero when the input is silent.</li>
+</ul>
+<h4>The formula</h4>
+<pre>norm = eps + x[0]^2 + x[1]^2 + ... + x[M-1]^2
+w[k] = w[k] + mu * e * x[k] / norm          for every k = 0 .. M-1</pre>
+<p>"Normalised" means the correction is divided by the input energy <code>norm</code>. Then the size
+of the step does not depend on how loud the input is.</p>
+<h4>Examples</h4>
+<table>
+<tr><th>w before</th><th>x</th><th>e</th><th>mu</th><th>eps</th><th>norm</th><th>mu&middot;e/norm</th><th>w after</th></tr>
+<tr><td>{0, 0}</td><td>{1, 2}</td><td>0.5</td><td>1</td><td>0</td><td>5</td><td>0.1</td><td>{0.1, 0.2}</td></tr>
+<tr><td>{1, &minus;1}</td><td>{2, &minus;1}</td><td>1</td><td>0.5</td><td>0</td><td>5</td><td>0.1</td><td>{1.2, &minus;1.1}</td></tr>
+<tr><td>{0, 0}</td><td>{0, 0}</td><td>0.3</td><td>0.5</td><td>10<sup>&minus;6</sup></td><td>10<sup>&minus;6</sup></td><td>150000</td><td>{0, 0} (every x[k] is 0)</td></tr>
+</table>
+<p>A check on the first row: with the new weights, the same input gives
+y = 0.1&middot;1 + 0.2&middot;2 = 0.5, which is exactly the old error. With mu = 1, one step removes the
+whole error for this input. A smaller mu makes smaller, safer steps.</p>
+<h4>Inputs and limits</h4>
+<ul>
+<li><code>M</code> is 1 to 64; <code>mu</code> is 0.1 to 1; the test uses eps = 10<sup>&minus;6</sup>.</li>
+<li>Weights must be right to about 0.0001.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>The norm is the same for every weight. Compute it once, in its own loop.</li>
+<li>The factor mu&middot;e/norm is also the same for every weight. Then one more loop updates all
+weights.</li>
+</ol>
+</details>""",
 r"""void nlms_update(float *w, const float *x, int M, float e, float mu, float eps)
 {
 }
@@ -955,13 +1825,73 @@ int main(void)
 "Compute the norm once, then one loop to update all weights."))
 
 add(P("nlms_sysid", S, "NLMS system identification", "c", "func",
-r"""<p>Now the whole adaptive filter. The hidden test passes white noise through an unknown
-8-tap FIR system. Your filter must learn it. Write</p>
-<pre>void  nlms_init(Nlms *s, int M, float mu);   // zero weights and history
-float nlms_step(Nlms *s, float x, float d);   // returns the error e = d - y</pre>
-<p>Each step: push <code>x</code> into the history (newest first), compute
-y = &Sigma; w[k]&middot;h[k], e = d &minus; y, then do the NLMS update with eps = 1e-6.
-The test checks every error value and that the weights end up close to the true system.</p>""",
+r"""<p><b>What to write.</b> A complete NLMS adaptive filter that runs sample by sample. The starter
+code defines the structure <code>Nlms</code>. Write:</p>
+<pre>// zero the weights and the history
+void  nlms_init(Nlms *s, int M, float mu);
+
+// one sample in; returns the error e = d - y
+float nlms_step(Nlms *s, float x, float d);</pre>
+<p><b>Why it matters.</b> This is <b>system identification</b>: the filter learns an unknown system by
+watching its input and output. An echo canceller does exactly this to learn the echo path of a
+room.</p>
+<h4>The setting used by the test</h4>
+<pre>                  +---------------------+
+          +------&gt;|  unknown system     |------- d[n] -----+
+          |       |  (an 8-tap FIR)     |                  |
+          |       +---------------------+                  v
+ x[n] ----+                                               (+)--&gt; e[n]
+ (white   |       +---------------------+                  ^
+  noise)  |       |  your filter w      |                  | (minus)
+          +------&gt;|                     |------- y[n] -----+
+                  +---------------------+
+                            ^
+                            | NLMS update, using the history and e[n]</pre>
+<p>The test sends 4000 random samples (between &minus;1 and 1) through the system
+{0.5, &minus;0.3, 0.2, 0.1, &minus;0.05, 0.03, 0, &minus;0.01} to get d, and calls your
+<code>nlms_step(s, x, d)</code> for each sample, with M = 8 and mu = 0.5.</p>
+<h4>The structure</h4>
+<ul>
+<li><code>w[k]</code>: the weights. <code>h[k]</code>: the input history, <b>h[0] = newest</b>,
+h[1] = the one before, and so on. <code>M</code>: number of taps. <code>mu</code>: step size.</li>
+</ul>
+<h4>The rule, step by step (one call of nlms_step)</h4>
+<ol>
+<li>Push x into the history: every value moves one place towards the end (the oldest, h[M&minus;1],
+falls out), and x goes into h[0].</li>
+<li>Filter output with the <b>current</b> weights: y = &Sigma; w[k]&middot;h[k], for k = 0 .. M&minus;1.</li>
+<li>Error: e = d &minus; y.</li>
+<li>NLMS update, as in the previous problem, with eps = 10<sup>&minus;6</sup>:
+norm = 10<sup>&minus;6</sup> + &Sigma; h[k]&sup2;, then w[k] += mu&middot;e&middot;h[k] / norm.</li>
+<li>Return e.</li>
+</ol>
+<h4>Worked example (small version: M = 2, mu = 0.5, unknown system {0.5, &minus;0.3})</h4>
+<p>Values are rounded to 6 decimals.</p>
+<table>
+<tr><th>n</th><th>x</th><th>h after push</th><th>d</th><th>y</th><th>e (returned)</th><th>w after update</th></tr>
+<tr><td>0</td><td>1</td><td>{1, 0}</td><td>0.5</td><td>0</td><td>0.5</td><td>{0.25, 0}</td></tr>
+<tr><td>1</td><td>&minus;1</td><td>{&minus;1, 1}</td><td>&minus;0.8</td><td>&minus;0.25</td><td>&minus;0.55</td><td>{0.3875, &minus;0.1375}</td></tr>
+<tr><td>2</td><td>0.5</td><td>{0.5, &minus;1}</td><td>0.55</td><td>0.33125</td><td>0.21875</td><td>{0.43125, &minus;0.225}</td></tr>
+<tr><td>3</td><td>1</td><td>{1, 0.5}</td><td>0.35</td><td>0.31875</td><td>0.03125</td><td>{0.44375, &minus;0.21875}</td></tr>
+</table>
+<p>The weights move towards the true system {0.5, &minus;0.3}, and the error gets smaller.</p>
+<h4>What the test checks</h4>
+<ul>
+<li>Every returned error matches a reference filter (to about 0.001). So the order of the steps above
+matters.</li>
+<li>After 4000 samples, the weights are very close to the true system: the sum of
+(w[k] &minus; true[k])&sup2; must be below 10<sup>&minus;6</sup>.</li>
+<li><code>nlms_init</code> must set M, mu, and all weights and history values to 0. The test fills the
+structure with garbage first.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>When you shift the history, which end must you start from so that you do not overwrite a value
+before it has been copied?</li>
+<li>Is y computed with the weights from before or after this sample's update?</li>
+<li>Your <code>nlms_update</code> from the previous problem already does step 4.</li>
+</ol>
+</details>""",
 r"""#define NLMS_MAX 32
 
 typedef struct {
@@ -1048,10 +1978,56 @@ int main(void)
 S = "Real-time and buffers"
 
 add(P("latency", S, "Samples and milliseconds", "c", "func",
-r"""<p>Audio programmers switch between samples and time all the time. Write</p>
-<pre>double samples_to_ms(int n, int fs);    // 256 samples at 48000 Hz -> 5.3333 ms
-int    ms_to_samples(double ms, int fs); // rounded to the nearest sample; 10 ms at 44100 -> 441</pre>
-<p><code>ms</code> is never negative.</p>""",
+r"""<p><b>What to write.</b> Two conversions between a number of samples and a time in
+milliseconds (ms), for a sample rate <code>fs</code> in samples per second (Hz):</p>
+<pre>// how long do n samples last?
+double samples_to_ms(int n, int fs);
+
+// how many samples fit in ms milliseconds? (rounded)
+int    ms_to_samples(double ms, int fs);</pre>
+<p><b>Why it matters.</b> Audio programmers switch between samples and time all the time. "A buffer of
+256 samples at 48 kHz" means 5.33 ms of delay (latency) for every buffer in the chain.</p>
+<h4>The formulas</h4>
+<pre>ms      = 1000 * n / fs
+samples = ms * fs / 1000      then round to the nearest whole sample</pre>
+<pre> fs = 48000 samples per second, so one sample lasts 1/48000 s = 0.02083 ms
+
+ |&lt;------------- 256 samples = 5.333 ms ------------&gt;|
+ |s|s|s|s|s|s|s|s|s|s|s|s|s|s|s|s|s|s| ... |s|s|s|s|s|</pre>
+<h4>Examples</h4>
+<table>
+<tr><th>Call</th><th>Working</th><th>Result</th></tr>
+<tr><td><code>samples_to_ms(256, 48000)</code></td><td>256000 / 48000</td><td>5.3333&hellip;</td></tr>
+<tr><td><code>samples_to_ms(480, 48000)</code></td><td>480000 / 48000</td><td>10.0</td></tr>
+<tr><td><code>samples_to_ms(64, 44100)</code></td><td>64000 / 44100</td><td>1.45125&hellip;</td></tr>
+<tr><td><code>samples_to_ms(0, 8000)</code></td><td></td><td>0.0</td></tr>
+<tr><td><code>ms_to_samples(10, 44100)</code></td><td>441.0</td><td>441</td></tr>
+<tr><td><code>ms_to_samples(1, 44100)</code></td><td>44.1</td><td>44</td></tr>
+<tr><td><code>ms_to_samples(2.7, 48000)</code></td><td>129.6</td><td>130</td></tr>
+<tr><td><code>ms_to_samples(0.0625, 8000)</code></td><td>0.5 (exactly half)</td><td>1 (a half rounds up)</td></tr>
+</table>
+<h4>Inputs and limits</h4>
+<ul>
+<li><code>ms</code> is never negative (the test uses 0 to 500 ms). So rounding to nearest can be done
+by adding 0.5 and then cutting the fraction off with a cast to <code>int</code>.</li>
+<li><code>n</code> is 0 to 100000; <code>fs</code> is a normal audio rate (8000 to 192000).</li>
+<li><code>samples_to_ms</code> must be accurate to about 9 significant digits, so use
+<code>double</code>.</li>
+</ul>
+<h4>Things to watch out for</h4>
+<ul>
+<li>Integer division throws the fraction away: <code>256 * 1000 / 48000</code> in <code>int</code> is
+5, not 5.333. Make sure the division happens in <code>double</code>, for example by writing
+<code>1000.0</code>.</li>
+<li>For <code>ms_to_samples</code>, compute <code>ms * fs / 1000.0</code> in that order, then
+round.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Check the units: samples &divide; (samples per second) gives seconds; times 1000 gives ms.</li>
+<li>For the other direction, turn the formula round, and then decide how to round the result.</li>
+</ol>
+</details>""",
 r"""double samples_to_ms(int n, int fs)
 {
     return 0.0;
@@ -1092,10 +2068,51 @@ int main(void)
 "Do the arithmetic in double (1000.0 * n / fs), not int: 256 * 1000 / 48000 in int is 5."))
 
 add(P("interleave", S, "Interleave stereo", "c", "func",
-r"""<p>Sound cards usually deliver stereo <em>interleaved</em>: L0 R0 L1 R1 ... DSP code often
-prefers separate channels. Write both directions for <code>frames</code> stereo frames:</p>
-<pre>void deinterleave(const float *in, float *left, float *right, int frames);
-void interleave(const float *left, const float *right, float *out, int frames);</pre>""",
+r"""<p><b>What to write.</b> Two functions that convert stereo audio between the
+<em>interleaved</em> layout and two separate channel arrays. <code>frames</code> is the number of stereo
+frames.</p>
+<pre>void deinterleave(const float *in, float *left, float *right,
+                  int frames);
+void interleave(const float *left, const float *right, float *out,
+                int frames);</pre>
+<p><b>Why it matters.</b> Sound cards and WAV files usually store stereo interleaved: left, right,
+left, right, &hellip; DSP code often prefers one array per channel. Every audio driver converts
+between the two.</p>
+<h4>Picture</h4>
+<p>A <b>frame</b> is one left sample and one right sample taken at the same moment.</p>
+<pre> interleaved (in for deinterleave, out for interleave), frames = 3:
+ index:    0    1    2    3    4    5
+        [ L0 | R0 | L1 | R1 | L2 | R2 ]
+          \____/    \____/    \____/
+          frame 0   frame 1   frame 2
+
+ separate channels:
+ left:  [ L0 | L1 | L2 ]      index 0, 1, 2
+ right: [ R0 | R1 | R2 ]      index 0, 1, 2</pre>
+<table>
+<tr><th>Frame i</th><th>Left sample is at</th><th>Right sample is at</th></tr>
+<tr><td>0</td><td>in[0]</td><td>in[1]</td></tr>
+<tr><td>1</td><td>in[2]</td><td>in[3]</td></tr>
+<tr><td>2</td><td>in[4]</td><td>in[5]</td></tr>
+</table>
+<h4>Example</h4>
+<p>in = {1, &minus;1, 2, &minus;2, 3, &minus;3} with frames = 3:</p>
+<ul>
+<li><code>deinterleave</code> gives left = {1, 2, 3} and right = {&minus;1, &minus;2, &minus;3}.</li>
+<li><code>interleave</code> of that left and right gives back {1, &minus;1, 2, &minus;2, 3, &minus;3}.</li>
+</ul>
+<h4>Inputs and limits</h4>
+<ul>
+<li><code>frames</code> is 1 to 512. The interleaved array has 2 &times; frames values.</li>
+<li>The test checks that interleaving the result of deinterleaving gives back exactly the original
+array.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Loop over the frames, not over the interleaved array.</li>
+<li>Look at the table: what formula gives the left index and the right index from i?</li>
+</ol>
+</details>""",
 r"""void deinterleave(const float *in, float *left, float *right, int frames)
 {
 }
@@ -1141,11 +2158,61 @@ int main(void)
 "Frame i lives at in[2*i] (left) and in[2*i + 1] (right)."))
 
 add(P("pcm_convert", S, "int16 to float and back", "c", "func",
-r"""<p>Write the two conversions every audio driver needs:</p>
-<pre>void s16_to_f32(const int16_t *in, float *out, int n);  // out = in / 32768
-void f32_to_s16(const float *in, int16_t *out, int n);  // round(in * 32768), clipped</pre>
-<p>For <code>f32_to_s16</code>, round to nearest (halves away from zero) and clip to
-[&minus;32768, 32767], exactly like <code>float_to_q15</code>.</p>""",
+r"""<p><b>What to write.</b> The two conversions every audio driver needs, between 16-bit integer
+samples (PCM) and float samples:</p>
+<pre>// out[i] = in[i] / 32768
+void s16_to_f32(const int16_t *in, float *out, int n);
+
+// out[i] = round(in[i] * 32768), clipped to the int16_t range
+void f32_to_s16(const float *in, int16_t *out, int n);</pre>
+<p><b>Why it matters.</b> Sound cards and WAV files use 16-bit integers. DSP code often prefers floats
+between &minus;1 and +1, where "full scale" is 1.0. You convert on the way in and on the way out.</p>
+<h4>The rules</h4>
+<ul>
+<li><b>s16_to_f32</b>: divide each sample by 32768.0. This is the same scale as Q15.</li>
+<li><b>f32_to_s16</b>: multiply by 32768, round to nearest (an exact half moves <b>away from zero</b>,
+like <code>roundf</code>), and clip to [&minus;32768, 32767]. Exactly the same steps as
+<code>float_to_q15</code>.</li>
+</ul>
+<h4>Examples</h4>
+<table>
+<tr><th>int16 in</th><th>float out</th></tr>
+<tr><td>16384</td><td>0.5</td></tr>
+<tr><td>&minus;32768</td><td>&minus;1.0</td></tr>
+<tr><td>32767</td><td>0.999969482421875</td></tr>
+<tr><td>1</td><td>0.000030517578125</td></tr>
+<tr><td>0</td><td>0.0</td></tr>
+</table>
+<table>
+<tr><th>float in</th><th>in &times; 32768</th><th>int16 out</th></tr>
+<tr><td>0.5</td><td>16384</td><td>16384</td></tr>
+<tr><td>&minus;0.25</td><td>&minus;8192</td><td>&minus;8192</td></tr>
+<tr><td>1.5/32768</td><td>1.5</td><td>2 (a half moves away from 0)</td></tr>
+<tr><td>&minus;1.5/32768</td><td>&minus;1.5</td><td>&minus;2</td></tr>
+<tr><td>1.0</td><td>32768</td><td>32767 (clipped)</td></tr>
+<tr><td>&minus;1.2</td><td>&minus;39321.6</td><td>&minus;32768 (clipped)</td></tr>
+</table>
+<h4>What the test checks</h4>
+<ul>
+<li><code>s16_to_f32</code> gives exactly <code>in[i] / 32768.0f</code>.</li>
+<li>Converting int16 &rarr; float &rarr; int16 gives back exactly the original samples.</li>
+<li><code>f32_to_s16</code> rounds and clips correctly for floats between &minus;1.3 and 1.3.</li>
+</ul>
+<h4>Things to watch out for</h4>
+<ul>
+<li>Divide by 32768, not 32767. With 32767 the round trip would fail (16384 would come back as
+16385).</li>
+<li><code>in[i] / 32768</code> with an integer 32768 is <b>integer</b> division and gives 0 for most
+samples. Write <code>32768.0f</code>.</li>
+<li>Converting an out-of-range float to an integer type is undefined behaviour in C. Clip while the
+value is still a float, then cast.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>The first function is one division per sample.</li>
+<li>For the second function, reuse your <code>float_to_q15</code> steps inside a loop.</li>
+</ol>
+</details>""",
 r"""#include <stdint.h>
 #include <math.h>
 
@@ -1205,13 +2272,56 @@ int main(void)
 "Divide by 32768.0f one way. The other way: roundf, clamp, then cast."))
 
 add(P("s24_unpack", S, "Unpack 24-bit samples", "c", "func",
-r"""<p>24-bit audio is often packed in 3 bytes per sample, little-endian (lowest byte first).
-Write <code>int32_t s24le_to_s32(const uint8_t *p)</code> that reads one sample from
-<code>p[0..2]</code> and returns it as a sign-extended 32-bit integer
-(range &minus;8,388,608 to 8,388,607).</p>
-<pre>{0xFF, 0xFF, 0x7F} -> 8388607
-{0x00, 0x00, 0x80} -> -8388608
-{0xFF, 0xFF, 0xFF} -> -1</pre>""",
+r"""<p><b>What to write.</b> A function <code>int32_t s24le_to_s32(const uint8_t *p)</code>. It
+reads one 24-bit audio sample stored in the 3 bytes <code>p[0]</code>, <code>p[1]</code>,
+<code>p[2]</code> and returns it as a normal 32-bit signed integer.</p>
+<p><b>Why it matters.</b> 24-bit audio (studio recordings, many audio codecs and I2S links) is often
+packed into 3 bytes per sample to save space. Before you can use a sample, you must unpack it into an
+<code>int32_t</code>.</p>
+<h4>The layout</h4>
+<p>The bytes are <b>little-endian</b>: the lowest byte comes first in memory.</p>
+<pre> memory:      p[0]          p[1]          p[2]
+          [ low byte  ] [ middle byte ] [ high byte ]
+
+ the 24-bit value:
+  bit:   23 ....... 16 | 15 ........ 8 | 7 ......... 0
+        [    p[2]      |     p[1]      |     p[0]     ]
+         ^
+         bit 23 is the sign bit: 1 means the sample is negative</pre>
+<h4>The rule, step by step</h4>
+<ol>
+<li>Put the bytes together: u = p[0] + p[1]&middot;2<sup>8</sup> + p[2]&middot;2<sup>16</sup> (with
+shifts and OR). This gives a number from 0 to 16777215 (0xFFFFFF).</li>
+<li>The 24 bits are in <b>two's complement</b>. If bit 23 is 1 (u &ge; 0x800000 = 8388608), the real
+value is negative: value = u &minus; 2<sup>24</sup> = u &minus; 16777216. Otherwise value = u.</li>
+</ol>
+<p>This is called <b>sign extension</b>: in 32 bits, the top 8 bits must become copies of bit 23.
+Without it, 0xFFFFFF would read as +16777215 instead of &minus;1.</p>
+<h4>Examples</h4>
+<table>
+<tr><th>p[0], p[1], p[2]</th><th>24 bits (hex)</th><th>As unsigned</th><th>You return</th></tr>
+<tr><td>0x56, 0x34, 0x12</td><td>0x123456</td><td>1193046</td><td>1193046</td></tr>
+<tr><td>0x01, 0x00, 0x00</td><td>0x000001</td><td>1</td><td>1</td></tr>
+<tr><td>0x00, 0x00, 0x00</td><td>0x000000</td><td>0</td><td>0</td></tr>
+<tr><td>0xFF, 0xFF, 0x7F</td><td>0x7FFFFF</td><td>8388607</td><td>8388607 (the largest)</td></tr>
+<tr><td>0x00, 0x00, 0x80</td><td>0x800000</td><td>8388608</td><td>&minus;8388608 (the smallest)</td></tr>
+<tr><td>0xFF, 0xFF, 0xFF</td><td>0xFFFFFF</td><td>16777215</td><td>&minus;1</td></tr>
+<tr><td>0x00, 0xFF, 0xFF</td><td>0xFFFF00</td><td>16776960</td><td>&minus;256</td></tr>
+</table>
+<p>The range of the result is &minus;8,388,608 to 8,388,607.</p>
+<h4>Things to watch out for</h4>
+<ul>
+<li>Notice that p[0] is the <em>low</em> byte, even though it is written first.</li>
+<li>Do the shifts on unsigned values (for example cast each byte to <code>uint32_t</code>). Shifting a
+1 into the sign bit of a signed <code>int</code> is not allowed in C.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>How far must each byte be shifted to land in its place in the picture?</li>
+<li>How do you test whether bit 23 is set?</li>
+<li>What do you subtract to turn the unsigned 24-bit value into the signed one?</li>
+</ol>
+</details>""",
 r"""#include <stdint.h>
 
 int32_t s24le_to_s32(const uint8_t *p)
@@ -1248,18 +2358,69 @@ int main(void)
 "Assemble the 24 bits with shifts, then sign-extend: if bit 23 is set, subtract 2^24."))
 
 add(P("ring_buffer", S, "Lock-free ring buffer", "c", "func",
-r"""<p>The ring buffer (FIFO) passes audio between threads, for example from the audio callback to
-a recording thread. Use two <b>free-running</b> unsigned counters: <code>head</code> counts
-pushes, <code>tail</code> counts pops. Then</p>
-<ul><li>number of items = <code>head - tail</code> (unsigned arithmetic wraps correctly);</li>
-<li>slot of an index = <code>index &amp; (RING_CAP - 1)</code>, because RING_CAP is a power of two;</li>
-<li>the buffer holds up to RING_CAP items.</li></ul>
+r"""<p><b>What to write.</b> A ring buffer (a FIFO queue: first in, first out) of
+<code>float</code> values with a fixed capacity <code>RING_CAP</code> = 8. The starter code defines the
+structure <code>Ring</code>. Write:</p>
 <pre>void     ring_init(Ring *r);
 int      ring_push(Ring *r, float v);   // 1 on success, 0 if full
 int      ring_pop(Ring *r, float *v);   // 1 on success, 0 if empty
-unsigned ring_count(const Ring *r);</pre>
-<p>(With one producer thread and one consumer thread, this design needs no lock; real code adds
-atomic loads and stores for <code>head</code> and <code>tail</code>.)</p>""",
+unsigned ring_count(const Ring *r);     // how many items are stored now</pre>
+<p><b>Why it matters.</b> A ring buffer passes audio between threads, for example from the audio
+callback to a recording thread. It never allocates memory and never moves data, so it is safe in real
+time.</p>
+<h4>The idea: two counters that only go up</h4>
+<ul>
+<li><code>head</code> counts all pushes so far. <code>tail</code> counts all pops so far. Neither is
+ever reset (except by <code>ring_init</code>, which sets both to 0).</li>
+<li>Number of items stored = <code>head - tail</code>.</li>
+<li>The slot used by a counter value c is <code>c &amp; (RING_CAP - 1)</code>. Because RING_CAP = 8 is
+a power of two, <code>c &amp; 7</code> keeps only the lowest 3 bits, which is the same as c % 8.</li>
+<li>Empty: head == tail. Full: head &minus; tail == RING_CAP. All 8 slots can be used.</li>
+<li><code>ring_push</code> on a full buffer and <code>ring_pop</code> on an empty buffer change
+nothing and return 0. A successful pop writes the oldest value into <code>*v</code>.</li>
+</ul>
+<h4>Picture (head = 11 pushes so far, tail = 6 pops so far)</h4>
+<p>v0, v1, &hellip; are the values in the order they were pushed. v0 to v5 have been popped.</p>
+<pre> slot:     0     1     2     3     4     5     6     7
+        [ v8  | v9  | v10 |  -  |  -  |  -  | v6  | v7  ]
+
+ next pop  reads slot  tail &amp; 7 = 6 &amp; 7  = 6   (v6, the oldest)
+ next push writes slot head &amp; 7 = 11 &amp; 7 = 3
+ items stored = head - tail = 11 - 6 = 5         (v6, v7, v8, v9, v10)</pre>
+<h4>Example sequence (after ring_init)</h4>
+<table>
+<tr><th>Call</th><th>Returns</th><th>head</th><th>tail</th><th>count</th></tr>
+<tr><td><code>ring_push(r, 1.5f)</code></td><td>1</td><td>1</td><td>0</td><td>1</td></tr>
+<tr><td><code>ring_push(r, 2.5f)</code></td><td>1</td><td>2</td><td>0</td><td>2</td></tr>
+<tr><td><code>ring_pop(r, &amp;v)</code></td><td>1, v = 1.5</td><td>2</td><td>1</td><td>1</td></tr>
+<tr><td><code>ring_pop(r, &amp;v)</code></td><td>1, v = 2.5</td><td>2</td><td>2</td><td>0</td></tr>
+<tr><td><code>ring_pop(r, &amp;v)</code></td><td>0 (empty)</td><td>2</td><td>2</td><td>0</td></tr>
+<tr><td>8 more pushes</td><td>1 each</td><td>10</td><td>2</td><td>8 (full)</td></tr>
+<tr><td>a 9th push</td><td>0 (full)</td><td>10</td><td>2</td><td>8</td></tr>
+</table>
+<h4>When the counters wrap round</h4>
+<p>An <code>unsigned</code> is 32 bits, so after 4294967295 it wraps to 0. Unsigned arithmetic in C is
+done modulo 2<sup>32</sup>, so <code>head - tail</code> is still right. Example: tail = 4294967294
+(0xFFFFFFFE) and head = 2 (it has wrapped). Then head &minus; tail = 4 in unsigned arithmetic, which is
+correct: 4 pushes happened since then. The slots used by the counter values 0xFFFFFFFE, 0xFFFFFFFF, 0,
+1 are 6, 7, 0, 1, which continue smoothly. The test moves both counters to 0xFFFFFFF0 halfway through,
+so this case is checked.</p>
+<h4>Requirements</h4>
+<ul>
+<li>Values come out in the same order they went in.</li>
+<li><code>ring_init</code> must set both counters; the test fills the structure with garbage first.</li>
+</ul>
+<p>(With one producer thread and one consumer thread, this design needs no lock. Real code also uses
+atomic loads and stores for <code>head</code> and <code>tail</code>.)</p>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Write <code>ring_count</code> first; push and pop can use the same expression to test for full and
+empty.</li>
+<li>In push: which slot do you write, and which counter moves? In pop: which slot do you read, and
+which counter moves?</li>
+<li>Why must you never reset the counters to 0 when the buffer becomes empty?</li>
+</ol>
+</details>""",
 r"""#define RING_CAP 8u   // must be a power of two
 
 typedef struct {
@@ -1356,16 +2517,73 @@ int main(void)
 "Full means head - tail == RING_CAP; empty means head == tail. Never reset the counters; just mask them when indexing."))
 
 add(P("gain_ramp", S, "Click-free gain changes", "c", "func",
-r"""<p>If you change the volume from one block to the next in a single jump, you hear a click.
-Real-time code <em>ramps</em> the gain instead. Write a processor that, when given a new target,
-moves its gain in a straight line to the target over exactly <code>ramp_len</code> samples, and
-works the same however the audio is split into blocks:</p>
-<pre>void gr_init(GainRamp *g, float gain, int ramp_len); // start at gain, not ramping
-void gr_set_target(GainRamp *g, float target);       // start a new ramp from the current gain
-void gr_process(GainRamp *g, float *x, int n);       // multiply x in place</pre>
-<p>During a ramp, sample k (k = 1 ... ramp_len, counting from the first sample after
-<code>gr_set_target</code>) uses gain = start + (target &minus; start)&middot;k/ramp_len. After that,
-the gain stays at the target.</p>""",
+r"""<p><b>What to write.</b> A gain (volume) processor that never jumps. When it gets a new target
+gain, it moves the gain in a straight line to the target over exactly <code>ramp_len</code> samples.
+The starter code defines the structure <code>GainRamp</code>. Write:</p>
+<pre>// start at gain, not ramping
+void gr_init(GainRamp *g, float gain, int ramp_len);
+
+// start a new ramp from the current gain to target
+void gr_set_target(GainRamp *g, float target);
+
+// multiply the n samples of x in place
+void gr_process(GainRamp *g, float *x, int n);</pre>
+<p><b>Why it matters.</b> If you change the volume from one block to the next in a single jump, the
+waveform gets a sudden step, and you hear a click. Real-time audio code <em>ramps</em> the gain
+instead.</p>
+<h4>The rule</h4>
+<ul>
+<li>After <code>gr_init</code>, every sample is multiplied by the starting gain.</li>
+<li><code>gr_set_target</code> starts a ramp from the current gain ("start") to the target.</li>
+<li>Count the samples processed after that call: k = 1, 2, &hellip;, ramp_len. Sample k is multiplied by
+<pre>gain = start + (target - start) * k / ramp_len</pre></li>
+<li>So the last ramp sample (k = ramp_len) uses exactly the target, and every sample after it uses the
+target too.</li>
+<li><code>gr_process</code> multiplies the <code>n</code> samples of <code>x</code> in place.</li>
+</ul>
+<h4>Picture (gain 1.0, then gr_set_target(&amp;g, 0.0) with ramp_len = 4)</h4>
+<pre> sample:   0     1     2     3  |  4     5     6     7     8     9
+ gain:    1.0   1.0   1.0   1.0 | 0.75  0.50  0.25  0.0   0.0   0.0
+                                |
+              gr_set_target is called here
+ k:                                1     2     3     4   (ramp done)</pre>
+<h4>The output must not depend on the block sizes</h4>
+<p>The caller may hand you the audio in blocks of any size, and a ramp may continue across several calls
+of <code>gr_process</code>. The samples after the call above must get the same gains however they are
+split:</p>
+<pre> one block of 6:     [0.75 0.50 0.25 0.00 0.00 0.00]
+ blocks of 2, 1, 3:  [0.75 0.50] [0.25] [0.00 0.00 0.00]
+ blocks of 1:        [0.75] [0.50] [0.25] [0.00] [0.00] [0.00]</pre>
+<h4>More examples</h4>
+<table>
+<tr><th>Start</th><th>Target</th><th>ramp_len</th><th>Gains for k = 1, 2, &hellip;</th></tr>
+<tr><td>1.0</td><td>0.0</td><td>4</td><td>0.75, 0.5, 0.25, 0.0</td></tr>
+<tr><td>0.0</td><td>1.0</td><td>4</td><td>0.25, 0.5, 0.75, 1.0</td></tr>
+<tr><td>1.0</td><td>0.25</td><td>5</td><td>0.85, 0.70, 0.55, 0.40, 0.25</td></tr>
+</table>
+<h4>What the test does</h4>
+<ul>
+<li>It fills the structure with garbage, calls <code>gr_init(&amp;g, 1.0f, R)</code> with R between 16
+and 600, then processes 6000 samples of 1.0 in random block sizes (1 to 300).</li>
+<li>It sets the targets 0.25, 0.8, 0.0 and 1.0 at samples 1000, 2000, 3000 and 4000.</li>
+<li>Every output must match the rule to about 0.0001.</li>
+</ul>
+<h4>Things to watch out for</h4>
+<ul>
+<li>If you add a float step again and again, small errors pile up (in the last row above, float steps
+give 0.40000007 instead of 0.4). Set the gain to exactly the target on the last ramp sample.</li>
+<li>Anything that must survive until the next call (the step, how many ramp samples are left) must be
+kept in the structure, not in local variables.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>What should <code>gr_set_target</code> store so that <code>gr_process</code> knows how much to
+change the gain per sample, and for how many more samples?</li>
+<li>In <code>gr_process</code>, for each sample: first update the gain if a ramp is running, then
+multiply. Check this order against the picture: the first sample after the call must already use
+0.75.</li>
+</ol>
+</details>""",
 r"""typedef struct {
     float gain;      // current gain
     float target;
@@ -1455,11 +2673,55 @@ int main(void)
 "Keep the ramp in the state (step and samples remaining), not in local variables, so it continues across calls. On the last ramp sample, set gain = target exactly."))
 
 add(P("src_ratio", S, "Resampling ratio", "c", "func",
-r"""<p>To convert from <code>fs_in</code> to <code>fs_out</code>, a polyphase resampler upsamples by
-U and downsamples by D, where U/D = fs_out/fs_in in lowest terms. Write</p>
-<pre>void src_ratio(int fs_in, int fs_out, int *up, int *down);</pre>
-<pre>44100 -> 48000 : up = 160, down = 147
-48000 -> 16000 : up = 1,   down = 3</pre>""",
+r"""<p><b>What to write.</b> A function
+<code>void src_ratio(int fs_in, int fs_out, int *up, int *down)</code>. It finds the smallest whole
+numbers U and D with U/D = fs_out/fs_in, and stores them in <code>*up</code> and <code>*down</code>.</p>
+<p><b>Why it matters.</b> A sample-rate converter (for example 44.1 kHz music to a 48 kHz sound card)
+often works in two stages: first it raises the rate by a whole number U (upsampling), then it lowers it
+by a whole number D (downsampling). The smaller U and D are, the less work and memory it needs.</p>
+<pre> fs_in --&gt; [ up by U ] --&gt; [ low-pass filter ] --&gt; [ down by D ] --&gt; fs_out
+
+ 44100 Hz --&gt; x160 = 7056000 Hz --&gt; filter --&gt; /147 --&gt; 48000 Hz</pre>
+<h4>The rule</h4>
+<ol>
+<li>g = the greatest common divisor (GCD) of fs_in and fs_out: the largest number that divides both
+exactly.</li>
+<li>up = fs_out / g and down = fs_in / g. (Careful with the order: <b>up</b> comes from the
+<b>output</b> rate.)</li>
+</ol>
+<h4>Euclid's algorithm for the GCD</h4>
+<p>Replace the pair (a, b) by (b, a % b) until b becomes 0. Then a is the GCD. Example for
+gcd(44100, 48000):</p>
+<table>
+<tr><th>a</th><th>b</th><th>a % b</th></tr>
+<tr><td>44100</td><td>48000</td><td>44100</td></tr>
+<tr><td>48000</td><td>44100</td><td>3900</td></tr>
+<tr><td>44100</td><td>3900</td><td>1200</td></tr>
+<tr><td>3900</td><td>1200</td><td>300</td></tr>
+<tr><td>1200</td><td>300</td><td>0 &rarr; stop, the GCD is 300</td></tr>
+</table>
+<p>So up = 48000 / 300 = 160 and down = 44100 / 300 = 147.</p>
+<h4>Examples</h4>
+<table>
+<tr><th>fs_in</th><th>fs_out</th><th>GCD</th><th>up</th><th>down</th></tr>
+<tr><td>44100</td><td>48000</td><td>300</td><td>160</td><td>147</td></tr>
+<tr><td>48000</td><td>44100</td><td>300</td><td>147</td><td>160</td></tr>
+<tr><td>48000</td><td>16000</td><td>16000</td><td>1</td><td>3</td></tr>
+<tr><td>22050</td><td>32000</td><td>50</td><td>640</td><td>441</td></tr>
+<tr><td>96000</td><td>44100</td><td>300</td><td>147</td><td>320</td></tr>
+<tr><td>8000</td><td>8000</td><td>8000</td><td>1</td><td>1</td></tr>
+</table>
+<h4>Inputs and limits</h4>
+<ul>
+<li>The test tries every pair (including equal pairs) of the rates 8000, 11025, 16000, 22050, 24000,
+32000, 44100, 48000, 88200, 96000, 176400 and 192000.</li>
+</ul>
+<details><summary>How to think about it (open if you are stuck)</summary>
+<ol>
+<li>Write a small helper function for the GCD first and test it on the table above.</li>
+<li>Then two divisions give the answer.</li>
+</ol>
+</details>""",
 r"""void src_ratio(int fs_in, int fs_out, int *up, int *down)
 {
     *up = fs_out;
